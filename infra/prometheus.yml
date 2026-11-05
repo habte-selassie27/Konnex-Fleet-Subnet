@@ -1,0 +1,9 @@
+# infra/prometheus.yml — placeholder (mounted by docker-compose)
+# Status: STUB — scrape targets added as services come online (Phase 2+).
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
