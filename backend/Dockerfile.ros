@@ -1,0 +1,32 @@
+# backend/Dockerfile.ros — backend running beside Gazebo with live ROS 2.
+#
+# The host backend image (backend/Dockerfile) is a slim Python base with no ROS,
+# which is why `SIM_MODE=gazebo` cannot consume telemetry from a host process.
+# This variant starts from the Gazebo/ROS image built by
+# `simulation/Dockerfile.gazebo` (ROS 2 Humble + Gazebo Harmonic) and adds the
+# backend's Python dependencies, so `rclpy` is importable in the same process
+# that serves the API.
+#
+# Build (after `make sim-build` has produced the gazebo image):
+#   docker build -f backend/Dockerfile.ros -t fleet-backend-ros backend
+# Run:
+#   docker compose --profile simulation up -d gazebo backend-sim
+ARG GAZEBO_IMAGE=autonomousfleetintelligence-gazebo:latest
+FROM ${GAZEBO_IMAGE}
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    ROS_DOMAIN_ID=42
+
+WORKDIR /app
+
+# Backend runtime deps only (no torch/mlflow: the live fleet loop needs none).
+COPY requirements.txt ./
+RUN grep -vE '^(torch|mlflow|stable-baselines3|gymnasium)==' requirements.txt \
+      > /tmp/requirements-live.txt \
+ && pip install --no-cache-dir -r /tmp/requirements-live.txt
+
+COPY . /app
+
+EXPOSE 8000
+CMD ["python", "-m", "uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
