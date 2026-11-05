@@ -1,0 +1,212 @@
+# docker-compose.yml — Konnex Fleet Intelligence Subnet
+# Full service definition per AGENTS.md §3.6 / BUILD.md §12.
+
+version: "3.9"
+
+services:
+
+  # ─── Infrastructure ────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: fleet
+      POSTGRES_USER: fleet
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fleet_dev}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fleet"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks: [fleet-net]
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+    networks: [fleet-net]
+
+  minio:
+    image: minio/minio:RELEASE.2024-03-10T02-53-48Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9001:9001"   # console
+    networks: [fleet-net]
+
+  # ─── Robotics / Simulation (Phase 1) ────────────────────────────
+  gazebo:
+    build:
+      context: ./simulation
+      dockerfile: Dockerfile.gazebo
+    environment:
+      - ROS_DOMAIN_ID=42
+      # Empty by default: gz aborts if it tries X11 with no display. Set
+      # DISPLAY=:0 explicitly (with an X socket mount) to get the GUI.
+      - DISPLAY=${DISPLAY:-}
+      - GZ_SIM_RESOURCE_PATH=/workspace/install/simulation/share/simulation
+      # Force Mesa software GL (llvmpipe): no GPU/display on headless run
+      # boxes; gz-sim renders offscreen via EGL with --headless-rendering.
+      - LIBGL_ALWAYS_SOFTWARE=1
+      # Qt fallback: if any gz tool initializes Qt without a display, use the
+      # offscreen platform plugin instead of aborting.
+      - QT_QPA_PLATFORM=offscreen
+    volumes:
+      - ./simulation/worlds:/worlds:ro
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw  # for headless rendering
+    networks: [fleet-net]
+    # The container entrypoint launches world + robots + bridge. Healthcheck:
+    # gz-sim publishes /clock; healthy once the world is live.
+    healthcheck:
+      test: ["CMD-SHELL", "gz topic -l 2>/dev/null | grep -q '^/clock$' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+
+  # ─── Application ──────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    # NOTE: gazebo is service_started (not service_healthy) so the backend can
+    # boot headless (SIM_MODE=headless) even where the heavy Gazebo image can't
+    # run (no GPU/display). The gazebo healthcheck still gates `make sim-up`.
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis:    { condition: service_healthy }
+      gazebo:   { condition: service_started }
+    environment:
+      - DATABASE_URL=postgresql://fleet:${POSTGRES_PASSWORD:-fleet_dev}@postgres/fleet
+      - REDIS_URL=redis://redis:6379/0
+      - MINIO_ENDPOINT=minio:9000
+      - FLEET_API_KEY=${FLEET_API_KEY:-dev-only-key}
+      - ROS_DOMAIN_ID=42
+      - SIM_MODE=${SIM_MODE:-headless}
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+    ports:
+      - "8000:8000"
+    networks: [fleet-net]
+
+  # ─── Simulation profile: backend with LIVE ROS 2 telemetry ──────
+  # The default `backend` is a slim image with no rclpy, so SIM_MODE=gazebo
+  # there degrades to headless. This service runs the backend from the Gazebo
+  # image (rclpy available) against the running gazebo container, so the fleet
+  # loop is driven by GazeboRobotAdapter over /robot_N/{odom,scan,battery}.
+  #
+  #   docker compose --profile simulation up -d gazebo backend-sim
+  #
+  # Port 8001 keeps it distinct from the headless backend on 8000; point the
+  # dashboard at it with VITE_API_URL=http://localhost:8001.
+  backend-sim:
+    profiles: ["simulation"]
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.ros
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis:    { condition: service_healthy }
+      gazebo:   { condition: service_healthy }
+    environment:
+      - DATABASE_URL=postgresql://fleet:${POSTGRES_PASSWORD:-fleet_dev}@postgres/fleet
+      - REDIS_URL=redis://redis:6379/0
+      - FLEET_API_KEY=${FLEET_API_KEY:-dev-only-key}
+      - ROS_DOMAIN_ID=42
+      - SIM_MODE=gazebo
+      - PAYMENT_PROVIDER=${PAYMENT_PROVIDER:-mock}
+    ports:
+      - "8001:8000"
+    networks: [fleet-net]
+
+  arq-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: python -m backend.workers.arq_worker
+    depends_on:
+      - backend
+      - redis
+    environment:
+      - DATABASE_URL=postgresql://fleet:${POSTGRES_PASSWORD:-fleet_dev}@postgres/fleet
+      - REDIS_URL=redis://redis:6379/0
+    networks: [fleet-net]
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    depends_on: [backend]
+    ports:
+      - "3000:80"
+    environment:
+      - VITE_API_URL=http://localhost:8000
+      - VITE_WS_URL=ws://localhost:8000/ws/fleet
+    networks: [fleet-net]
+
+  # ─── Validation (Phase 6) ──────────────────────────────────────
+  validator:
+    build:
+      context: ./validator
+      dockerfile: Dockerfile
+    depends_on:
+      - backend
+      - gazebo
+      - redis
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./experiments/results:/results
+    environment:
+      - BACKEND_URL=http://backend:8000
+      - ROS_DOMAIN_ID=42
+    networks: [fleet-net]
+
+  # ─── ML Platform ──────────────────────────────────────────────
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.11.0
+    command: mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri /mlflow/data
+    volumes:
+      - mlflow_data:/mlflow/data
+    ports:
+      - "5000:5000"
+    networks: [fleet-net]
+
+  # ─── Monitoring ───────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    volumes:
+      - ./infra/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    networks: [fleet-net]
+
+  grafana:
+    image: grafana/grafana:10.4.0
+    volumes:
+      - ./infra/grafana:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+    networks: [fleet-net]
+
+networks:
+  fleet-net:
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+  mlflow_data:
+  grafana_data:
