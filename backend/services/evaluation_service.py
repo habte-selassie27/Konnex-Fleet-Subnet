@@ -6,6 +6,8 @@ Status: COMPLETE (Phase 6).
 import json
 import uuid
 
+from sqlalchemy import select
+
 from backend.db.database import Database
 from backend.db.models import EvaluationRecord
 from backend.schemas import EvaluationResponse, EvaluationSubmitRequest
@@ -43,6 +45,13 @@ class EvaluationService:
             await session.commit()
             await session.refresh(record)
         return self._to_response(record)
+
+    async def list(self):
+        """List all evaluations."""
+        async with self._db.session() as session:
+            result = await session.execute(select(EvaluationRecord))
+            records = result.scalars().all()
+        return [self._to_response(record) for record in records]
 
     async def get(self, evaluation_id: str) -> EvaluationResponse | None:
         """Fetch an evaluation, or None when it does not exist."""

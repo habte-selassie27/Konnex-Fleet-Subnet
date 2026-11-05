@@ -20,6 +20,13 @@ def _evaluations(request: Request) -> EvaluationService:
     return cast(EvaluationService, request.app.state.evaluations)
 
 
+@router.get("", response_model=list[EvaluationResponse])
+@router.get("/", response_model=list[EvaluationResponse])
+async def list_evaluations(request: Request):
+    """List all evaluations (minimal for dashboard/validators)."""
+    return await _evaluations(request).list()
+
+
 @router.post("/", status_code=201, response_model=EvaluationResponse)
 async def submit_evaluation(body: EvaluationSubmitRequest, request: Request) -> EvaluationResponse:
     """Accept a validator's evaluation result (stores record + artifact)."""

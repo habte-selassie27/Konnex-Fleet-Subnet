@@ -66,6 +66,9 @@ class EvaluationResponse(BaseModel):
     final_score: float | None
     artifact_hash: str
     artifact_url: str
+    popw_commitments: dict[str, Any] | None = None
+    stake: dict[str, Any] | None = None
+    serving: dict[str, Any] | None = None
 
 
 class RobotFailureResponse(BaseModel):
