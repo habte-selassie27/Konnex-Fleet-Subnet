@@ -1,0 +1,258 @@
+<?xml version="1.0"?>
+<!-- amr_model.urdf.xacro — Phase 1 autonomous mobile robot
+  Status: COMPLETE
+  Spec (AGENTS.md §4.5, BUILD.md §4):
+    Differential drive AMR
+    chassis: 0.5m x 0.5m x 0.25m, mass 20kg
+    wheels: 0.15m radius, 0.05m width, mass 1kg each
+    wheel_base: 0.4m
+    caster: 1 rear caster wheel
+    LiDAR: top-mounted, 360° scan, 10m range, 1° resolution, 10Hz
+    IMU: chassis-mounted, 100Hz
+    Odometry: from wheel encoders, 50Hz
+    max_linear_velocity: 1.0 m/s
+    max_angular_velocity: 1.5 rad/s
+-->
+<robot name="amr_model" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- Constants -->
+  <xacro:property name="chassis_length" value="0.5"/>
+  <xacro:property name="chassis_width" value="0.5"/>
+  <xacro:property name="chassis_height" value="0.25"/>
+  <xacro:property name="chassis_mass" value="20.0"/>
+  <xacro:property name="wheel_radius" value="0.15"/>
+  <xacro:property name="wheel_width" value="0.05"/>
+  <xacro:property name="wheel_mass" value="1.0"/>
+  <xacro:property name="wheel_base" value="0.4"/>
+  <xacro:property name="lidar_height" value="0.25"/>
+
+  <!-- ==================== Links ==================== -->
+
+  <!-- Base link (chassis) -->
+  <link name="base_link">
+    <visual>
+      <geometry>
+        <box size="${chassis_length} ${chassis_width} ${chassis_height}"/>
+      </geometry>
+      <material name="chassis_color">
+        <color rgba="0.2 0.2 0.8 1"/>
+      </material>
+    </visual>
+    <collision name="collision">
+      <geometry>
+        <box size="${chassis_length} ${chassis_width} ${chassis_height}"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="${chassis_mass}"/>
+      <inertia ixx="0.167" ixy="0" ixz="0" iyy="0.167" iyz="0" izz="0.333"/>
+    </inertial>
+  </link>
+
+  <!-- Left wheel -->
+  <link name="wheel_left">
+    <visual>
+      <geometry>
+        <cylinder length="${wheel_width}" radius="${wheel_radius}"/>
+      </geometry>
+      <material name="wheel_color">
+        <color rgba="0.1 0.1 0.1 1"/>
+      </material>
+    </visual>
+    <collision name="collision">
+      <geometry>
+        <cylinder length="${wheel_width}" radius="${wheel_radius}"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="${wheel_mass}"/>
+      <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.002"/>
+    </inertial>
+  </link>
+
+  <!-- Right wheel -->
+  <link name="wheel_right">
+    <visual>
+      <geometry>
+        <cylinder length="${wheel_width}" radius="${wheel_radius}"/>
+      </geometry>
+      <material name="wheel_color">
+        <color rgba="0.1 0.1 0.1 1"/>
+      </material>
+    </visual>
+    <collision name="collision">
+      <geometry>
+        <cylinder length="${wheel_width}" radius="${wheel_radius}"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="${wheel_mass}"/>
+      <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.002"/>
+    </inertial>
+  </link>
+
+  <!-- Caster wheel (rear) -->
+  <link name="caster">
+    <visual>
+      <geometry>
+        <sphere radius="0.03"/>
+      </geometry>
+      <material name="caster_color">
+        <color rgba="0.3 0.3 0.3 1"/>
+      </material>
+    </visual>
+    <collision name="collision">
+      <geometry>
+        <sphere radius="0.03"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.1"/>
+      <inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.0001"/>
+    </inertial>
+  </link>
+
+  <!-- LiDAR sensor (top-mounted) -->
+  <link name="lidar_link">
+    <visual>
+      <geometry>
+        <cylinder length="0.04" radius="0.06"/>
+      </geometry>
+      <material name="lidar_color">
+        <color rgba="0.8 0.2 0.2 1"/>
+      </material>
+    </visual>
+    <collision name="collision">
+      <geometry>
+        <cylinder length="0.04" radius="0.06"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.1"/>
+      <inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.0001"/>
+    </inertial>
+  </link>
+
+  <!-- IMU link -->
+  <link name="imu_link"/>
+
+  <!-- NOTE: no free-floating odom link — the gz-sim DiffDrive plugin emits the
+       odom frame itself; a second root link would break robot_state_publisher
+       ("Two root links found"). -->
+
+  <!-- ==================== Joints ==================== -->
+
+  <!-- Left wheel joint (continuous) -->
+  <joint name="wheel_left_joint" type="continuous">
+    <parent link="base_link"/>
+    <child link="wheel_left"/>
+    <origin xyz="0 ${wheel_base/2} ${-chassis_height/2 + wheel_radius}" rpy="${-pi/2} 0 0"/>
+    <axis xyz="0 0 1"/>
+  </joint>
+
+  <!-- Right wheel joint (continuous) -->
+  <joint name="wheel_right_joint" type="continuous">
+    <parent link="base_link"/>
+    <child link="wheel_right"/>
+    <origin xyz="0 ${-wheel_base/2} ${-chassis_height/2 + wheel_radius}" rpy="${pi/2} 0 0"/>
+    <axis xyz="0 0 1"/>
+  </joint>
+
+  <!-- Caster joint (fixed) -->
+  <joint name="caster_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="caster"/>
+    <origin xyz="${-chassis_length/2 + 0.05} 0 ${-chassis_height/2 + 0.03}" rpy="0 0 0"/>
+  </joint>
+
+  <!-- LiDAR joint (fixed, top-mounted) -->
+  <joint name="lidar_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="lidar_link"/>
+    <origin xyz="0 0 ${chassis_height/2 + lidar_height}" rpy="0 0 0"/>
+  </joint>
+
+  <!-- IMU joint (fixed, chassis-mounted) -->
+  <joint name="imu_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="imu_link"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+
+  <!-- ==================== Gazebo Plugins ==================== -->
+
+  <!-- Differential drive plugin -->
+  <gazebo>
+    <plugin filename="gz-sim-diff-drive-system" name="gz::sim::systems::DiffDrive">
+      <left_joint>wheel_left_joint</left_joint>
+      <right_joint>wheel_right_joint</right_joint>
+      <wheel_separation>${wheel_base}</wheel_separation>
+      <wheel_radius>${wheel_radius}</wheel_radius>
+      <odom_frame_id>odom</odom_frame_id>
+      <robot_base_frame>base_link</robot_base_frame>
+      <!-- No explicit odom_topic/tf_topic: the gz-sim defaults are model-scoped
+           (/model/{robot}/odom, /model/{robot}/tf), matching the ros_gz_bridge
+           entries in simulation/launch/multi_robot.launch.py. An explicit
+           <odom_topic> is used LITERALLY (all robots would share /odom). -->
+    </plugin>
+  </gazebo>
+
+  <!-- LiDAR plugin
+       gpu_lidar is the ONLY lidar type in Gazebo Harmonic — the CPU `lidar`
+       type is not supported ("Sensor type LIDAR not supported yet").
+       The headless-rendering flag + Mesa llvmpipe (LIBGL_ALWAYS_SOFTWARE=1)
+       serve it offscreen on headless run boxes. -->
+  <gazebo reference="lidar_link">
+    <sensor type="gpu_lidar" name="lidar">
+      <always_on>true</always_on>
+      <update_rate>10</update_rate>
+      <!-- No <topic>: a literal topic name is used verbatim, so every robot
+           would publish to /scan and they'd all collide. Omitting it gives
+           the model-scoped default (/model/<model>/link/<link>/sensor/<name>/scan),
+           which is what the ros_gz_bridge config bridges per robot. -->
+      <lidar>
+        <scan>
+          <horizontal>
+            <samples>360</samples>
+            <resolution>1</resolution>
+            <min_angle>-3.14159</min_angle>
+            <max_angle>3.14159</max_angle>
+          </horizontal>
+        </scan>
+        <range>
+          <min>0.1</min>
+          <max>10.0</max>
+          <resolution>0.01</resolution>
+        </range>
+      </lidar>
+    </sensor>
+  </gazebo>
+
+  <!-- IMU plugin
+       Attached to base_link, not imu_link: imu_link is an empty link, so the
+       URDF parser's fixed-joint lumping drops it (and its sensor) — verified
+       by execution, the imu topic never existed. The IMU is chassis-mounted
+       at the base origin anyway (imu_joint origin is 0 0 0). -->
+  <gazebo reference="base_link">
+    <sensor type="imu" name="imu">
+      <always_on>true</always_on>
+      <update_rate>100</update_rate>
+      <!-- No <topic> — see the lidar note above (model-scoped default). -->
+    </sensor>
+  </gazebo>
+
+  <!-- ROS 2 odometry publisher -->
+  <gazebo>
+    <plugin filename="gz-sim-pose-publisher-system" name="gz::sim::systems::PosePublisher">
+      <publish_service_topic>true</publish_service_topic>
+      <follow_chassis_frame>true</follow_chassis_frame>
+    </plugin>
+  </gazebo>
+
+  <!-- Sensors system is NOT declared here on purpose: it is a WORLD-level
+       plugin (worlds/warehouse_v1.sdf). Declaring it per robot gives every
+       robot its own render engine/context; with >=2 robots those race
+       ("Scene already exists with name: scene") and gz-server segfaults.
+       One world-level instance serves every robot's lidar/imu. -->
+
+</robot>
