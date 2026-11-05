@@ -1,0 +1,29 @@
+# .dockerignore — keep the backend-sim build context small (repo root context).
+# Never ship local secrets or regenerable artifacts into an image.
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+.venv
+venv
+__pycache__
+*.py[cod]
+*.egg-info
+.mypy_cache
+.ruff_cache
+.pytest_cache
+.coverage
+htmlcov
+node_modules
+frontend/node_modules
+frontend/dist
+frontend/coverage
+ml/checkpoints
+mlruns
+experiments/results
+data
+artifacts
+logs
+*.log
+.DS_Store
