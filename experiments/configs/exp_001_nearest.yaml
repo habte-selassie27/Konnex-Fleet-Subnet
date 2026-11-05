@@ -1,0 +1,23 @@
+# exp_001 — Nearest Task Assignment Baseline (Phase 3)
+experiment:
+  id: "exp_001"
+  name: "Nearest Task Assignment Baseline"
+  policy: "nearest"
+
+scenario:
+  world: "warehouse_v1"
+  robot_count: 5
+  task_count: 20
+  seed_range: [1000, 1029]   # 30 seeds for tight confidence intervals
+  obstacle_count: 15
+  battery_range: [0.6, 1.0]
+  failure_injection: false
+
+execution:
+  time_limit_s: 600
+  runs_per_seed: 1
+
+output:
+  results_dir: "experiments/results/exp_001"
+  save_trajectories: true
+  save_telemetry: true
