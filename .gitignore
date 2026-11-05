@@ -1,0 +1,55 @@
+# ─── Environment & secrets ───────────────────────────────────────────────
+.env
+.env.local
+*.pem
+*.key
+
+# ─── Python ───────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+.coverage.*
+*.db
+*.sqlite3
+
+# ─── Node / frontend ──────────────────────────────────────────────────────
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/coverage/
+*.tsbuildinfo
+
+# ─── Data & artifacts (real results only — never commit fabricated data) ──
+data/
+artifacts/
+experiments/results/*
+!experiments/results/.gitkeep
+ml/checkpoints/*
+!ml/checkpoints/.gitkeep
+ml/runs/
+*.pt
+*.parquet
+
+# ─── Logs ─────────────────────────────────────────────────────────────────
+logs/
+*.log
+
+# ─── OS / editor ──────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# MLflow file-backed store (regenerable via make mlflow-ingest)
+mlruns/
