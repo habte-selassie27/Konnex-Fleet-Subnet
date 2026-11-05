@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<!--
+  simulation/package.xml — ROS 2 ament package manifest (Phase 1).
+
+  Makes `simulation` a resolvable ROS 2 package so launch files can use
+  FindPackageShare("simulation") to locate worlds, robot models, sensor
+  configs and launch files inside the Gazebo container (and on any machine
+  with ROS 2 sourced).
+-->
+<package format="3">
+  <name>simulation</name>
+  <version>0.1.0</version>
+  <description>Gazebo Harmonic warehouse world, AMR robot model, and launch files for the Konnex Fleet Intelligence subnet (Phase 1).</description>
+  <maintainer email="dev@konnex-fleet.local">Konnex Fleet Subnet</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <exec_depend>ros_gz_sim</exec_depend>
+  <exec_depend>ros_gz_bridge</exec_depend>
+  <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>joint_state_publisher</exec_depend>
+  <exec_depend>xacro</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
