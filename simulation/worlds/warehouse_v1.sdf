@@ -1,0 +1,566 @@
+<!-- warehouse_v1.sdf — Phase 1 warehouse world
+  Status: COMPLETE
+  Spec (AGENTS.md §4.4, BUILD.md §4):
+    Floor: 40m x 30m
+    Walls: 0.3m thick, 3m high
+    Shelves: 15 units, 4m x 1m x 2m (randomizable positions via scenario config)
+    Pickup zones: 5 (floor markings, 1m radius)
+    Delivery zones: 5 (floor markings, 1m radius)
+    Charging stations: 2 (corners)
+    Lighting: uniform overhead, no shadows needed for MVP
+    Gravity: 9.81 m/s² (standard)
+    Physics: 1000Hz (Gazebo default)
+-->
+<sdf version="1.6">
+  <world name="warehouse_v1">
+
+    <!-- World systems — declared explicitly, in load order.
+
+         A world SDF that declares ANY <plugin> does not get gz-sim's default
+         system set: verified by execution, the world came up with only
+         /clock, /stats and no /world/<world>/create or /scene/info service,
+         so nothing could be spawned and no sensor could render.
+         Declaring the standard set restores Physics + UserCommands
+         (the /create service used by `ros_gz_sim create`) + SceneBroadcaster
+         (scene/info, used by the GUI and the `gz model` list command).
+
+         Sensors MUST live here, exactly once: declaring it per robot model
+         gives every robot its own render engine/context; with >=2 robots
+         those race, log "Scene already exists with name: scene" and segfault
+         inside SensorsPrivate::WaitForInit (verified: 5 robots spawn, gz-server
+         exits 139). One world-level instance serves every model's sensors. -->
+    <plugin filename="gz-sim-physics-system" name="gz::sim::systems::Physics"/>
+    <plugin filename="gz-sim-user-commands-system" name="gz::sim::systems::UserCommands"/>
+    <plugin filename="gz-sim-scene-broadcaster-system" name="gz::sim::systems::SceneBroadcaster"/>
+    <plugin filename="gz-sim-sensors-system" name="gz::sim::systems::Sensors">
+      <render_engine>ogre2</render_engine>
+    </plugin>
+
+    <!-- Scene — required by the Sensors system: without a scene element the
+         render thread starts and then never initializes, so lidar/imu sensors
+         are created but never publish (verified: topic exists, no publisher).
+         No shadows for the MVP (AGENTS.md §4.4). -->
+    <scene>
+      <ambient>0.4 0.4 0.4 1</ambient>
+      <background>0.7 0.7 0.7 1</background>
+      <shadows>false</shadows>
+    </scene>
+
+    <!-- Physics -->
+    <physics type="ignition::physics">
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+      <real_time_update_rate>1000</real_time_update_rate>
+    </physics>
+
+    <!-- Gravity -->
+    <gravity>0 0 -9.81</gravity>
+    <magnetic_field>0 0 0</magnetic_field>
+
+    <!-- Lighting — uniform overhead, no shadows -->
+    <light type="directional" name="overhead_light">
+      <pose>20 15 10 0 0 0</pose>
+      <diffuse>0.8 0.8 0.8 1</diffuse>
+      <specular>0.1 0.1 0.1 1</specular>
+      <attenuation>
+        <range>100</range>
+        <constant>1.0</constant>
+        <linear>0.0</linear>
+        <quadratic>0.0</quadratic>
+      </attenuation>
+      <direction>0 0 -1</direction>
+    </light>
+
+    <!-- Floor — 40m x 30m concrete surface -->
+    <model name="floor">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>40 30</size>
+            </plane>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>40 30</size>
+            </plane>
+          </geometry>
+          <material>
+            <ambient>0.4 0.4 0.4 1</ambient>
+            <diffuse>0.4 0.4 0.4 1</diffuse>
+          </material>
+        </visual>
+        <sensor type="contact" name="floor_contact">
+          <contact>
+            <collision>collision</collision>
+          </contact>
+        </sensor>
+      </link>
+    </model>
+
+    <!-- Walls — 0.3m thick, 3m high, enclosing 40m x 30m -->
+    <!-- North wall (y=30) -->
+    <model name="wall_north">
+      <static>true</static>
+      <pose>20 30 1.5 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>40 0.3 3</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>40 0.3 3</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.6 0.6 0.6 1</ambient>
+            <diffuse>0.6 0.6 0.6 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- South wall (y=0) -->
+    <model name="wall_south">
+      <static>true</static>
+      <pose>20 0 1.5 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>40 0.3 3</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>40 0.3 3</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.6 0.6 0.6 1</ambient>
+            <diffuse>0.6 0.6 0.6 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- East wall (x=40) -->
+    <model name="wall_east">
+      <static>true</static>
+      <pose>40 15 1.5 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>0.3 30 3</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>0.3 30 3</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.6 0.6 0.6 1</ambient>
+            <diffuse>0.6 0.6 0.6 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- West wall (x=0) -->
+    <model name="wall_west">
+      <static>true</static>
+      <pose>0 15 1.5 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>0.3 30 3</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>0.3 30 3</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.6 0.6 0.6 1</ambient>
+            <diffuse>0.6 0.6 0.6 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- Shelf units — 15 shelves, 4m x 1m x 2m
+         Positions randomized via ScenarioGenerator in production.
+         Default layout for initial testing: 3 rows of 5. -->
+    <model name="shelf_00">
+      <static>true</static>
+      <pose>5 5 1 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>4 1 2</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>4 1 2</size></box></geometry>
+          <material><ambient>0.8 0.5 0.2 1</ambient><diffuse>0.8 0.5 0.2 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="shelf_01">
+      <static>true</static>
+      <pose>5 10 1 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>4 1 2</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>4 1 2</size></box></geometry>
+          <material><ambient>0.8 0.5 0.2 1</ambient><diffuse>0.8 0.5 0.2 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="shelf_02">
+      <static>true</static>
+      <pose>5 15 1 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>4 1 2</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>4 1 2</size></box></geometry>
+          <material><ambient>0.8 0.5 0.2 1</ambient><diffuse>0.8 0.5 0.2 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="shelf_03">
+      <static>true</static>
+      <pose>5 20 1 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>4 1 2</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>4 1 2</size></box></geometry>
+          <material><ambient>0.8 0.5 0.2 1</ambient><diffuse>0.8 0.5 0.2 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="shelf_04">
+      <static>true</static>
+      <pose>5 25 1 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>4 1 2</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>4 1 2</size></box></geometry>
+          <material><ambient>0.8 0.5 0.2 1</ambient><diffuse>0.8 0.5 0.2 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="shelf_05">
+      <static>true</static>
+      <pose>15 5 1 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>4 1 2</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>4 1 2</size></box></geometry>
+          <material><ambient>0.8 0.5 0.2 1</ambient><diffuse>0.8 0.5 0.2 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="shelf_06">
+      <static>true</static>
+      <pose>15 10 1 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>4 1 2</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>4 1 2</size></box></geometry>
+          <material><ambient>0.8 0.5 0.2 1</ambient><diffuse>0.8 0.5 0.2 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="shelf_07">
+      <static>true</static>
+      <pose>15 15 1 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>4 1 2</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>4 1 2</size></box></geometry>
+          <material><ambient>0.8 0.5 0.2 1</ambient><diffuse>0.8 0.5 0.2 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="shelf_08">
+      <static>true</static>
+      <pose>15 20 1 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>4 1 2</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>4 1 2</size></box></geometry>
+          <material><ambient>0.8 0.5 0.2 1</ambient><diffuse>0.8 0.5 0.2 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="shelf_09">
+      <static>true</static>
+      <pose>15 25 1 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>4 1 2</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>4 1 2</size></box></geometry>
+          <material><ambient>0.8 0.5 0.2 1</ambient><diffuse>0.8 0.5 0.2 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="shelf_10">
+      <static>true</static>
+      <pose>25 5 1 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>4 1 2</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>4 1 2</size></box></geometry>
+          <material><ambient>0.8 0.5 0.2 1</ambient><diffuse>0.8 0.5 0.2 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="shelf_11">
+      <static>true</static>
+      <pose>25 10 1 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>4 1 2</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>4 1 2</size></box></geometry>
+          <material><ambient>0.8 0.5 0.2 1</ambient><diffuse>0.8 0.5 0.2 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="shelf_12">
+      <static>true</static>
+      <pose>25 15 1 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>4 1 2</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>4 1 2</size></box></geometry>
+          <material><ambient>0.8 0.5 0.2 1</ambient><diffuse>0.8 0.5 0.2 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="shelf_13">
+      <static>true</static>
+      <pose>30 5 1 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>4 1 2</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>4 1 2</size></box></geometry>
+          <material><ambient>0.8 0.5 0.2 1</ambient><diffuse>0.8 0.5 0.2 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="shelf_14">
+      <static>true</static>
+      <pose>30 10 1 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>4 1 2</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>4 1 2</size></box></geometry>
+          <material><ambient>0.8 0.5 0.2 1</ambient><diffuse>0.8 0.5 0.2 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- Pickup zones — 5 floor markings (green circles) -->
+    <model name="pickup_zone_0">
+      <static>true</static>
+      <pose>3 3 0.01 0 0 0</pose>
+      <link name="link">
+        <visual name="visual">
+          <geometry><cylinder><radius>1</radius><length>0.01</length></cylinder></geometry>
+          <material><ambient>0 0.8 0 0.5</ambient><diffuse>0 0.8 0 0.5</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="pickup_zone_1">
+      <static>true</static>
+      <pose>3 8 0.01 0 0 0</pose>
+      <link name="link">
+        <visual name="visual">
+          <geometry><cylinder><radius>1</radius><length>0.01</length></cylinder></geometry>
+          <material><ambient>0 0.8 0 0.5</ambient><diffuse>0 0.8 0 0.5</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="pickup_zone_2">
+      <static>true</static>
+      <pose>3 18 0.01 0 0 0</pose>
+      <link name="link">
+        <visual name="visual">
+          <geometry><cylinder><radius>1</radius><length>0.01</length></cylinder></geometry>
+          <material><ambient>0 0.8 0 0.5</ambient><diffuse>0 0.8 0 0.5</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="pickup_zone_3">
+      <static>true</static>
+      <pose>3 27 0.01 0 0 0</pose>
+      <link name="link">
+        <visual name="visual">
+          <geometry><cylinder><radius>1</radius><length>0.01</length></cylinder></geometry>
+          <material><ambient>0 0.8 0 0.5</ambient><diffuse>0 0.8 0 0.5</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="pickup_zone_4">
+      <static>true</static>
+      <pose>10 3 0.01 0 0 0</pose>
+      <link name="link">
+        <visual name="visual">
+          <geometry><cylinder><radius>1</radius><length>0.01</length></cylinder></geometry>
+          <material><ambient>0 0.8 0 0.5</ambient><diffuse>0 0.8 0 0.5</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- Delivery zones — 5 floor markings (blue circles) -->
+    <model name="delivery_zone_0">
+      <static>true</static>
+      <pose>37 27 0.01 0 0 0</pose>
+      <link name="link">
+        <visual name="visual">
+          <geometry><cylinder><radius>1</radius><length>0.01</length></cylinder></geometry>
+          <material><ambient>0 0.3 0.8 0.5</ambient><diffuse>0 0.3 0.8 0.5</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="delivery_zone_1">
+      <static>true</static>
+      <pose>37 22 0.01 0 0 0</pose>
+      <link name="link">
+        <visual name="visual">
+          <geometry><cylinder><radius>1</radius><length>0.01</length></cylinder></geometry>
+          <material><ambient>0 0.3 0.8 0.5</ambient><diffuse>0 0.3 0.8 0.5</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="delivery_zone_2">
+      <static>true</static>
+      <pose>37 12 0.01 0 0 0</pose>
+      <link name="link">
+        <visual name="visual">
+          <geometry><cylinder><radius>1</radius><length>0.01</length></cylinder></geometry>
+          <material><ambient>0 0.3 0.8 0.5</ambient><diffuse>0 0.3 0.8 0.5</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="delivery_zone_3">
+      <static>true</static>
+      <pose>37 3 0.01 0 0 0</pose>
+      <link name="link">
+        <visual name="visual">
+          <geometry><cylinder><radius>1</radius><length>0.01</length></cylinder></geometry>
+          <material><ambient>0 0.3 0.8 0.5</ambient><diffuse>0 0.3 0.8 0.5</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="delivery_zone_4">
+      <static>true</static>
+      <pose>30 27 0.01 0 0 0</pose>
+      <link name="link">
+        <visual name="visual">
+          <geometry><cylinder><radius>1</radius><length>0.01</length></cylinder></geometry>
+          <material><ambient>0 0.3 0.8 0.5</ambient><diffuse>0 0.3 0.8 0.5</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- Charging stations — 2 (corners) -->
+    <model name="charging_station_0">
+      <static>true</static>
+      <pose>2 2 0.5 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>1 1 1</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>1 1 1</size></box></geometry>
+          <material><ambient>1 0.8 0 1</ambient><diffuse>1 0.8 0 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="charging_station_1">
+      <static>true</static>
+      <pose>38 28 0.5 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>1 1 1</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>1 1 1</size></box></geometry>
+          <material><ambient>1 0.8 0 1</ambient><diffuse>1 0.8 0 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+  </world>
+</sdf>
