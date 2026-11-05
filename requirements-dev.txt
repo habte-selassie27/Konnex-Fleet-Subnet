@@ -1,0 +1,16 @@
+# requirements-dev.txt — konnex-fleet-subnet development & test dependencies
+# Versions verified against PyPI on 2026-08-08 (see docs/requirements.md).
+# Install together with requirements.txt.
+
+-r requirements.txt
+
+# ─── Testing ──────────────────────────────────────────────────────────────
+pytest==9.1.1
+pytest-cov==7.1.0
+pytest-asyncio==1.4.0
+
+# ─── Linting / type checking (TESTING_PLAN.md §8) ─────────────────────────
+ruff==0.16.2
+black==26.5.1
+mypy==2.3.0
+bandit==1.9.4
