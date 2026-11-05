@@ -1,0 +1,11 @@
+# PoPW Scoring Weights — configurable via protocol/powp/weights.yaml
+# Spec: TESTING_PLAN.md §13, AGENTS.md §8.8
+# All weights must sum to 1.0.
+# These are PROTOTYPE weights — Konnex SDK may override.
+
+mission_success: 0.40
+safety: 0.20
+efficiency: 0.15
+energy: 0.10
+coordination: 0.10
+robustness: 0.05
