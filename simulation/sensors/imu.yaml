@@ -1,0 +1,12 @@
+# imu.yaml — IMU sensor configuration (Phase 1).
+# Status: COMPLETE — spec from BUILD.md §4; mirrors the imu sensor declared
+# in simulation/robots/amr_model.urdf.xacro.
+
+type: imu                # gz-sim IMU sensor
+update_rate_hz: 100      # 100 Hz
+frame_id: imu_link
+topic: imu
+
+# gz-sim IMU publishes orientation / angular_velocity / linear_acceleration
+# in the sensor frame. Orientation is fused from the sim's internal state.
+always_on: true
