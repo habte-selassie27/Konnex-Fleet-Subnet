@@ -1,0 +1,63 @@
+# Dockerfile.gazebo — Gazebo Harmonic + ROS 2 Humble simulation image (Phase 1).
+#
+# Provides the full warehouse simulation stack:
+#   - ROS 2 Humble (LTS) on Ubuntu 22.04 (Jammy)
+#   - Gazebo Harmonic (gz-sim 8) via the OSRF stable apt repository
+#   - ros_gz_sim + ros_gz_bridge (topic bridge between gz and ROS 2)
+#   - xacro / robot_state_publisher / joint_state_publisher
+#   - the `simulation` ament package (worlds, models, launch files, fleet_agent)
+#
+# Default command: launch the warehouse world + 5 robots + the gz<->ROS bridge
+# (`make sim`). Override with `docker compose run` for world-only or robot-only
+# workflows (see Makefile `sim-world` / `sim-robots`).
+#
+# NOTE: the OSRF apt repository must be added because gz-harmonic is NOT in the
+# Ubuntu archive. Package is `gz-harmonic` (the gazebo<->gz rename after
+# Fortress); `gazebo-harmonic` does not exist.
+
+FROM osrf/ros:humble-desktop
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# ─── Gazebo Harmonic (Jammy) ────────────────────────────────────────────────
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        gnupg \
+        lsb-release \
+        wget \
+    && wget -q https://packages.osrfoundation.org/gazebo.gpg \
+        -O /usr/share/keyrings/pkgs-osrf-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/pkgs-osrf-archive-keyring.gpg] http://packages.osrfoundation.org/gazebo/ubuntu-stable $(lsb_release -cs) main" \
+        > /etc/apt/sources.list.d/gazebo-stable.list \
+    && apt-get update && apt-get install -y --no-install-recommends \
+        gz-harmonic \
+        ros-humble-ros-gzharmonic \
+        ros-humble-xacro \
+        ros-humble-robot-state-publisher \
+        ros-humble-joint-state-publisher \
+        python3-colcon-common-extensions \
+    && rm -rf /var/lib/apt/lists/*
+
+# ─── Build the `simulation` package ─────────────────────────────────────────
+WORKDIR /workspace
+COPY . /workspace/src/simulation
+# setup.bash is a bash script — RUN steps must use bash, not dash (/bin/sh
+# fails with "Bad substitution" on . /opt/ros/humble/setup.bash).
+SHELL ["/bin/bash", "-c"]
+RUN . /opt/ros/humble/setup.bash \
+    && colcon build --symlink-install --base-paths /workspace/src \
+        --packages-select simulation
+
+# Convenience: source ROS 2 + the workspace in every shell.
+RUN echo "source /opt/ros/humble/setup.bash" >> /root/.bashrc \
+    && echo "source /workspace/install/setup.bash" >> /root/.bashrc
+
+# ─── Default: full simulation (world + robots + bridge) ─────────────────────
+CMD ["bash", "-lc", "source /opt/ros/humble/setup.bash && source /workspace/install/setup.bash && ros2 launch simulation multi_robot.launch.py robot_count:=5 seed:=42"]
+
+# ─── Test stage ─────────────────────────────────────────────────────────────
+FROM autonomousfleetintelligence-gazebo:latest AS sim-test
+RUN apt-get update && apt-get install -y --no-install-recommends python3-pytest \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /ws/repo
+CMD ["bash", "-lc", "source /opt/ros/humble/setup.bash && source /workspace/install/setup.bash && (ros2 launch simulation multi_robot.launch.py robot_count:=5 seed:=42 &) ; for i in $(seq 1 60); do gz topic -l 2>/dev/null | grep -q /clock && break; sleep 1; done; cd /ws/repo && python3 -m pytest tests/simulation -m simulation -v --tb=short; pkill -f ros2 || true"]
