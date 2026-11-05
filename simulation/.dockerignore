@@ -1,0 +1,10 @@
+# simulation/.dockerignore — keep the Gazebo image build context lean.
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.git/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+README.md
