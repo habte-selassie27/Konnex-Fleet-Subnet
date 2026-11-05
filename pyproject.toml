@@ -1,0 +1,68 @@
+# pyproject.toml — konnex-fleet-subnet
+# Linting & tooling configuration per TESTING_PLAN.md Section 8.
+
+[project]
+name = "konnex-fleet-subnet"
+version = "0.1.0"
+description = "Autonomous Robot Fleet Orchestration Subnet for the Konnex Builder Program"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+dependencies = []
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+include = ["*.py", "*.pyi"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "A", "C4", "DTZ", "T20", "ARG", "PTH", "ERA"]
+ignore = ["ERA001"]  # Allow commented-out code during development (remove before Phase gate)
+
+[tool.black]
+line-length = 100
+target-version = ["py310"]
+
+[tool.mypy]
+strict = true
+ignore_missing_imports = true
+python_version = "3.10"
+# tests/e2e + tests/simulation contain Gazebo/ROS-gated suites with their own
+# conftest.py (duplicate-module conflict) and ROS-only imports; they are
+# covered by ruff + pytest instead.
+exclude = ["tests/e2e", "tests/simulation"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+asyncio_default_fixture_loop_scope = "function"
+markers = [
+    "simulation: requires a running Gazebo instance (Phase 1+)",
+    "e2e: requires the full docker stack via `make demo` (Phase 10)",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# `id` fields are mandated by the BUILD.md domain models (RobotState, Task, Mission, ...)
+"robotics/**" = ["A003"]
+"fleet/**" = ["A003"]
+"ml/**" = ["A003"]
+"validator/**" = ["A003"]
+"backend/**" = ["A003"]
+"payments/**" = ["A003"]
+# pytest.importorskip requires conditional imports after runtime check
+"tests/**" = ["E402", "A003", "F401"]
+"simulation/**" = ["A003"]
+# CLI script: sys.path bootstrap before imports + print-based report output are intentional
+"experiments/scripts/*" = ["E402", "T201"]
+"scripts/konnex_demo.py" = ["E402", "T201"]
+"scripts/payment_demo.py" = ["E402", "T201"]
+"scripts/verify_reproducibility.py" = ["E402", "T201"]
+"scripts/verify_consensus.py" = ["E402", "T201"]
+"scripts/verify_benchmark_logs.py" = ["E402", "T201"]
+"ml/tracking/*" = ["T201"]
+"scripts/plot_scaling.py" = ["E402", "T201"]
+"scripts/robustness_table.py" = ["E402", "T201"]
+
+[tool.bandit]
+# Seeded pseudo-random is used for deterministic simulation, not security/crypto.
+skips = ["B311"]
+exclude_dirs = ["tests", ".venv", "frontend", "node_modules", "ml/checkpoints", "data", "experiments/results"]
