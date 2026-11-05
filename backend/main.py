@@ -74,7 +74,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
 
     db = Database(config.database_url)
-    store = ArtifactStore(config.artifact_dir)
+    store = ArtifactStore(
+        config.artifact_dir,
+        minio_endpoint=config.minio_endpoint,
+        minio_access_key=config.minio_access_key,
+        minio_secret_key=config.minio_secret_key,
+        minio_bucket=config.minio_bucket,
+        minio_secure=config.minio_secure,
+    )
     app.state.settings = config
     app.state.db = db
     app.state.evaluations = EvaluationService(db, store)
