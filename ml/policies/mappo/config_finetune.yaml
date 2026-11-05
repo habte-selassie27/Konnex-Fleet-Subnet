@@ -1,0 +1,39 @@
+# ml/policies/mappo/config_finetune.yaml — PPO fine-tune from a BC checkpoint
+#
+# Use with:
+#   python ml/training/train.py --config ml/policies/mappo/config_finetune.yaml \
+#     --init-checkpoint ml/checkpoints/step_bc_v3.pt --init-log-std -2.0 \
+#     --total-timesteps 100000 \
+#     --output-dir experiments/results/mappo_ppo_ft \
+#     --checkpoint-dir ml/checkpoints/ppo_ft
+#
+# Lower learning rate, entropy coefficient, and clip range than the from-scratch
+# config: the BC + DAgger actor already completes every mission, so PPO should
+# refine it rather than replace it.
+
+experiment:
+  id: "exp_004_ft"
+  name: "fleet-mappo-finetune"
+  seed: 42
+
+scenario:
+  robot_count: 5
+  task_count: 20
+  obstacle_count: 15
+  time_limit_s: 600.0
+
+algorithm:
+  n_agents: 5
+  learning_rate: 1.0e-4
+  n_steps: 2048
+  batch_size: 256
+  n_epochs: 5
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.1
+  ent_coef: 0.001
+  vf_coef: 0.5
+  max_grad_norm: 0.5
+  target_kl: 0.015
+  total_timesteps: 100000
+  seed: 42
