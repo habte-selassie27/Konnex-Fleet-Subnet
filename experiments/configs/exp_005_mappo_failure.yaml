@@ -1,0 +1,24 @@
+# exp_005 — MAPPO under robot failure (Phase 5 robustness)
+experiment:
+  id: "exp_005"
+  name: "MAPPO with Failure Injection"
+  policy: "mappo"
+
+scenario:
+  world: "warehouse_v1"
+  robot_count: 5
+  task_count: 20
+  seed_range: [1000, 1009]
+  obstacle_count: 15
+  battery_range: [0.6, 1.0]
+  failure_injection: true
+  failure_count: 1
+
+execution:
+  time_limit_s: 600
+  runs_per_seed: 1
+
+output:
+  results_dir: "experiments/results/exp_005"
+  save_trajectories: true
+  save_telemetry: true
