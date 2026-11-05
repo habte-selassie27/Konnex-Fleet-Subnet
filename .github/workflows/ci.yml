@@ -1,0 +1,76 @@
+# CI — Konnex Fleet Intelligence Subnet
+# Pipeline per TESTING_PLAN.md Section 9.
+
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.10" }
+      - run: pip install ruff mypy bandit
+      - run: ruff check .
+      - run: mypy ml/ fleet/ backend/ protocol/ validator/ robotics/ simulation/ --ignore-missing-imports
+      - run: bandit -r . -ll -c pyproject.toml
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+      - run: cd frontend && npm ci && npm run lint && npm run type-check
+
+  unit-tests:
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.10" }
+      - run: pip install -r requirements-dev.txt
+      - run: pytest tests/unit/ -v --cov=. --cov-report=xml --tb=short
+      - uses: codecov/codecov-action@v4
+
+  integration-tests:
+    runs-on: ubuntu-latest
+    needs: unit-tests
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: fleet_test
+          POSTGRES_USER: fleet
+          POSTGRES_PASSWORD: fleet
+        options: --health-cmd pg_isready
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.10" }
+      - run: pip install -r requirements-dev.txt
+      - run: pytest tests/integration/ -v --tb=short
+        env:
+          DATABASE_URL: postgresql://fleet:fleet@localhost/fleet_test
+
+  simulation-tests:
+    runs-on: ubuntu-latest
+    needs: unit-tests
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.10" }
+      - run: pip install -r requirements-dev.txt
+      # Headless simulation tests run everywhere; Gazebo-gated tests self-skip
+      # when gz/rclpy are unavailable (honest NOT RUN rather than fabricated).
+      - run: pytest tests/simulation/ -m simulation -v --tb=short
+
+  build:
+    runs-on: ubuntu-latest
+    needs: integration-tests
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose config
+      - run: docker compose build
