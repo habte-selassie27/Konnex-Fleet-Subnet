@@ -1,0 +1,24 @@
+# exp_004 — MAPPO learned policy (Phase 4)
+# Reports honestly even if worse than baselines (TESTING_PLAN.md §10, Phase 4).
+experiment:
+  id: "exp_004"
+  name: "MAPPO Learned Policy"
+  policy: "mappo"
+
+scenario:
+  world: "warehouse_v1"
+  robot_count: 5
+  task_count: 20
+  seed_range: [1000, 1009]
+  obstacle_count: 15
+  battery_range: [0.6, 1.0]
+  failure_injection: false
+
+execution:
+  time_limit_s: 600
+  runs_per_seed: 1
+
+output:
+  results_dir: "experiments/results/exp_004"
+  save_trajectories: true
+  save_telemetry: true
