@@ -45,6 +45,11 @@ export const api = {
     return request<EvaluationResult>(`/evaluations/${evaluationId}`)
   },
 
+  /** List all evaluations. */
+  listEvaluations(): Promise<EvaluationResult[]> {
+    return request<EvaluationResult[]>('/evaluations/')
+  },
+
   /** Inject a failure into a robot (Phase 5 API). */
   failRobot(robotId: string, failureType: string): Promise<RobotFailureResponse> {
     return request<RobotFailureResponse>(`/robots/${robotId}/fail`, {
