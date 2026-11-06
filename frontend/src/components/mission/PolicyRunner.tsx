@@ -53,8 +53,7 @@ export function PolicyRunner() {
   // what the sim produced — no second, divergent simulation.
   const mission = useMemo(() => {
     if (!started || snapshot === null) return null
-    const view = snapshot ? simMissionFromSnapshot(snapshot, runState) : null
-    if (!view) return null
+    const view = simMissionFromSnapshot(snapshot, runState)
     const popw =
       view.elapsed_seconds > 0
         ? (view.popw_score ??
@@ -86,19 +85,32 @@ export function PolicyRunner() {
     // Run the sim locally — this is THE mission. Everything else reads from it.
     start({ itemCount: taskCount, seed: resolvedSeed, policy })
 
-    // Poll until the sim finishes, then POST its exact results to the backend
-    // so the benchmark table stores exactly what the viewport showed.
+    // Poll until the sim finishes by reading fresh state from the store
     for (let i = 0; i < 240; i++) {
-      if (runState === 'finished') break
-      if (running === false) return
       await new Promise((r) => setTimeout(r, 500))
+      if (useSimulationProvider.getState().runState === 'finished') break
     }
 
-    if (runState !== 'finished') {
+    if (useSimulationProvider.getState().runState !== 'finished') {
       setError('Simulation did not finish in time')
       setStarted(false)
       return
     }
+
+    const engine = useSimulationProvider.getState().engine
+    if (!engine) {
+      setError('No simulation engine available')
+      setStarted(false)
+      return
+    }
+
+    const currentSnapshot = engine.snapshot()
+    if (!currentSnapshot) {
+      setError('No simulation snapshot available')
+      setStarted(false)
+      return
+    }
+
 
     try {
       const created = await api.createMission({
