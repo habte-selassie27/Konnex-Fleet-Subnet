@@ -163,10 +163,17 @@ def _preference(row: BenchmarkResult) -> tuple[bool, int, float]:
 
 
 def _best_per_scale(rows: list[BenchmarkResult]) -> list[BenchmarkResult]:
-    """Keep the preferred row for each (policy, robot_count) pair."""
-    best: dict[tuple[str, int | None], BenchmarkResult] = {}
+    """Keep the preferred row for each (policy, robot_count) pair.
+
+    Live-mission captures are never collapsed: each completed mission is a
+    distinct run with its own seed, so they all stay visible in the table.
+    """
+    best: dict[tuple[str, int | None, str], BenchmarkResult] = {}
     for row in rows:
-        key = (row.policy, row.robot_count)
+        if row.harness == "live_mission":
+            key = (row.policy, row.robot_count, row.source)
+        else:
+            key = (row.policy, row.robot_count, "")
         current = best.get(key)
         if current is None or _preference(row) > _preference(current):
             best[key] = row
@@ -174,11 +181,17 @@ def _best_per_scale(rows: list[BenchmarkResult]) -> list[BenchmarkResult]:
 
 
 def _best_per_measurement(rows: list[BenchmarkResult]) -> list[BenchmarkResult]:
-    """Collapse identical measurements reported by two artifacts."""
-    best: dict[tuple[str, int | None, float | None], BenchmarkResult] = {}
+    """Collapse identical measurements reported by two artifacts.
+
+    Live-mission captures are distinct runs and are never collapsed.
+    """
+    best: dict[tuple[str, int | None, float | None, str], BenchmarkResult] = {}
     for row in rows:
         score = None if row.mean_popw_score is None else round(row.mean_popw_score, 4)
-        key = (row.policy, row.n_runs, score)
+        if row.harness == "live_mission":
+            key = (row.policy, row.n_runs, score, row.source)
+        else:
+            key = (row.policy, row.n_runs, score, "")
         current = best.get(key)
         if current is None or _preference(row) > _preference(current):
             best[key] = row
