@@ -73,16 +73,59 @@ curl -s -m 5 -L -X POST http://127.0.0.1:8000/api/v1/missions \
 echo "FleetPay live event scheduled: navigation_failure on robot_2 at t+20s"
 
 # ─── 5. Frontend dashboard ────────────────────────────────────────────────
-if [ -d frontend/node_modules ]; then
-  if curl -s -m 2 http://127.0.0.1:3014/ >/dev/null 2>&1; then
-    echo "Dashboard already running on :3014"
-  else
-    echo "Starting dashboard on :3014 ..."
-    (cd frontend && setsid npm run dev -- --port 3014 --host 127.0.0.1 \
-      > /tmp/fleet_demo_frontend.log 2>&1 < /dev/null &)
-    sleep 5
+DASH_PORT=3014
+DASH_URL="http://127.0.0.1:${DASH_PORT}"
+
+# A dev server answering on the port is not enough: it must also proxy
+# /api to the backend. A stale Vite process (started before vite.config.ts
+# gained the proxy) answers /api/v1/health with index.html, which surfaces in
+# the UI as "Unexpected token '<' ... is not valid JSON" and a permanent
+# OFFLINE state. Verify the proxy, not just the page.
+dashboard_wired() {
+  curl -s -m 2 "${DASH_URL}/api/v1/health" 2>/dev/null \
+    | grep -q '"status"[[:space:]]*:[[:space:]]*"ok"'
+}
+
+stop_dashboard_port() {
+  local pids
+  pids="$(lsof -ti "tcp:${DASH_PORT}" 2>/dev/null || true)"
+  if [ -z "$pids" ]; then
+    pids="$(ss -ltnp 2>/dev/null \
+      | awk -v port=":${DASH_PORT}" '$4 ~ port' \
+      | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p')"
   fi
-  echo "Dashboard: http://127.0.0.1:3014"
+  if [ -n "$pids" ]; then
+    echo "Stopping stale dashboard process(es): $(echo "$pids" | tr '\n' ' ')"
+    kill $pids 2>/dev/null || true
+    for _ in $(seq 1 10); do
+      lsof -ti "tcp:${DASH_PORT}" >/dev/null 2>&1 || break
+      sleep 0.5
+    done
+    # Still bound after a graceful stop — force it.
+    pids="$(lsof -ti "tcp:${DASH_PORT}" 2>/dev/null || true)"
+    [ -z "$pids" ] || kill -9 $pids 2>/dev/null || true
+  fi
+}
+
+if [ -d frontend/node_modules ]; then
+  if dashboard_wired; then
+    echo "Dashboard already running on :${DASH_PORT} (proxy healthy)"
+  else
+    if curl -s -m 2 "${DASH_URL}/" >/dev/null 2>&1; then
+      echo "Dashboard on :${DASH_PORT} is stale (no working /api proxy) — restarting"
+      stop_dashboard_port
+    fi
+    echo "Starting dashboard on :${DASH_PORT} ..."
+    (cd frontend && setsid npm run dev -- --port "${DASH_PORT}" --host 127.0.0.1 \
+      > /tmp/fleet_demo_frontend.log 2>&1 < /dev/null &)
+    for _ in $(seq 1 30); do
+      dashboard_wired && break
+      sleep 1
+    done
+    dashboard_wired \
+      || { echo "Dashboard failed to proxy /api — see /tmp/fleet_demo_frontend.log"; exit 1; }
+  fi
+  echo "Dashboard: ${DASH_URL}"
 else
   echo "Frontend dependencies missing — run: cd frontend && npm install"
 fi

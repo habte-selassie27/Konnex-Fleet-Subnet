@@ -34,12 +34,17 @@ export function App() {
   }, [theme])
 
   return (
-    <div className="flex h-screen flex-col bg-surface text-fg transition-colors duration-200">
+    <div className="flex min-h-screen flex-col bg-surface text-fg transition-colors duration-200">
       <Header />
 
-      <div className="min-h-0 flex-1 p-3">
+      {/* The scene gets a definite height, never a shrinkable flex-basis: as a
+          `flex-1 min-h-0` row it collapsed to ~60px whenever the panels below
+          were tall, and `overflow-hidden` then clipped the 576px map to a
+          blank strip. On desktop it fills the first screen; the panels below
+          scroll with the page (AGENTS.md §1.7). */}
+      <div className="p-3 lg:h-[calc(100vh-3.5rem)] lg:min-h-[37.5rem] lg:shrink-0">
         <ErrorBoundary label="Fleet viewport">
-          <div className="h-full overflow-hidden rounded-xl border border-line/60 bg-panel">
+          <div className="overflow-hidden rounded-xl border border-line/60 bg-panel lg:h-full">
             <FleetViewport />
           </div>
         </ErrorBoundary>
