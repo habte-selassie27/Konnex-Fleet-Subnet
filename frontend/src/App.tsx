@@ -12,7 +12,9 @@
 import { useEffect } from 'react'
 
 import { useFleetSocket } from './hooks/useFleetSocket'
+import { useAutoCaptureSim } from './hooks/useAutoCaptureSim'
 import { BenchmarkTable } from './components/benchmark/BenchmarkTable'
+import { PerRobotLeaderboard } from './components/benchmark/PerRobotLeaderboard'
 import { Header } from './components/layout/Header'
 import { FleetViewport } from './components/fleet/FleetViewport'
 import { MissionPanel } from './components/mission/MissionPanel'
@@ -23,6 +25,7 @@ import { useUiStore } from './store/uiStore'
 
 export function App() {
   useFleetSocket()
+  useAutoCaptureSim()
   const theme = useUiStore((s) => s.theme)
 
   // Theme is a single class on <html>: index.css carries both palettes and
@@ -61,6 +64,9 @@ export function App() {
       <ErrorBoundary label="Benchmark table">
         <div className="px-3 pb-3">
           <BenchmarkTable />
+          <div className="mt-3">
+            <PerRobotLeaderboard />
+          </div>
         </div>
       </ErrorBoundary>
 

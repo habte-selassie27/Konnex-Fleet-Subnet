@@ -235,6 +235,7 @@ class BenchmarkResult(BaseModel):
     ran_at: str = ""
     git_commit: str = ""
     source: str = ""
+    per_robot: list[dict[str, Any]] = Field(default_factory=list)
 
 
 # ─── Konnex-aligned validator network (GET /validators/network) ─────────────

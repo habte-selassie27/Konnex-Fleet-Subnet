@@ -84,8 +84,9 @@ class MissionResult:
 class PoPWScoringEngine:
     """Computes the prototype PoPW score from a MissionResult."""
 
-    def __init__(self, weights: ScoringWeights | None = None) -> None:
+    def __init__(self, weights: ScoringWeights | None = None, use_konnex: bool = False) -> None:
         self._weights = weights or ScoringWeights.from_yaml()
+        self._use_konnex = use_konnex
 
     @property
     def weights(self) -> ScoringWeights:
@@ -126,6 +127,9 @@ class PoPWScoringEngine:
             safety_violations=safety_violations,
             weights=KonnexWeights.from_yaml(),
         )
+        final_value = round(final, 2)
+        if self._use_konnex and konnex is not None:
+            final_value = round(konnex.final * 100.0, 2)
         return PoPWScore(
             mission_success=mission_success,
             safety=safety,
@@ -133,7 +137,7 @@ class PoPWScoringEngine:
             energy=energy,
             coordination=coordination,
             robustness=robustness,
-            final=round(final, 2),
+            final=final_value,
             weights=weights,
             konnex=konnex,
         )

@@ -89,12 +89,20 @@ export interface SimulatorOfflineEvent {
   timestamp: number
 }
 
+export interface MissionCompleteEvent {
+  type: 'MISSION_COMPLETE'
+  mission_id?: string
+  score?: number
+  timestamp: number
+}
+
 export type FleetEvent =
   | RobotStateUpdateEvent
   | MissionUpdateEvent
   | TaskCompletedEvent
   | CollisionDetectedEvent
   | SimulatorOfflineEvent
+  | MissionCompleteEvent
 
 export interface EvaluationResult {
   id: string
@@ -254,6 +262,7 @@ export interface BenchmarkResult {
   ran_at: string
   git_commit: string
   source: string
+  per_robot?: { robot_id: string; tasks_completed: number; tasks_assigned: number; battery_pct: number | null; final_nav_state: string | null }[]
 }
 
 // ─── Policies (POST/GET /policies — backend router is a STUB) ────────────────

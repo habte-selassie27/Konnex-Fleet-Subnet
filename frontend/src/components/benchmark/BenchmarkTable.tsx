@@ -5,7 +5,7 @@
 // fabricates numbers: unmeasured rows show em dashes plus their skip reason,
 // and API failures surface as an alert instead of fake rows (AGENTS.md Law 1).
 import { BarChart3 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { api } from '../../services/api'
 import type { BenchmarkResult } from '../../types'
@@ -55,7 +55,9 @@ const MEASURED = /COMPLETE|UNSTABLE/
 export function BenchmarkTable() {
   const [state, setState] = useState<LoadState>({ kind: 'loading' })
 
-  useEffect(() => {
+  const prevScoresRef = useRef<Map<string, number>>(new Map())
+
+  const load = () => {
     let cancelled = false
     api
       .listBenchmarks()
@@ -72,6 +74,18 @@ export function BenchmarkTable() {
       })
     return () => {
       cancelled = true
+    }
+  }
+
+  useEffect(() => {
+    const cleanup = load()
+    const handler = () => {
+      load()
+    }
+    window.addEventListener('mission-complete', handler)
+    return () => {
+      cleanup()
+      window.removeEventListener('mission-complete', handler)
     }
   }, [])
 
@@ -122,6 +136,26 @@ export function BenchmarkTable() {
                   </td>
                   <td className="py-2 pr-2 font-mono text-fg">
                     {scoreCell(row.mean_popw_score, row.std_popw_score)}
+                    {(() => {
+                      const key = `${row.policy}-${row.source}`
+                      const prev = prevScoresRef.current.get(key)
+                      const delta =
+                        prev !== undefined && row.mean_popw_score !== null
+                          ? row.mean_popw_score - prev
+                          : null
+                      if (row.mean_popw_score !== null) {
+                        prevScoresRef.current.set(key, row.mean_popw_score)
+                      }
+                      if (delta === null || Math.abs(delta) < 0.05) return null
+                      const sign = delta > 0 ? '+' : ''
+                      const color = delta > 0 ? 'text-emerald-500' : 'text-red-500'
+                      return (
+                        <span className={`ml-1 text-[10px] ${color}`}>
+                          {sign}
+                          {delta.toFixed(1)}
+                        </span>
+                      )
+                    })()}
                   </td>
                   <td className="py-2 pr-2 font-mono text-fg">
                     {successCell(row.mean_success_rate, row.std_success_rate)}

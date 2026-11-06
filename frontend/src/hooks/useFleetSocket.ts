@@ -53,6 +53,9 @@ export function useFleetSocket(): void {
         case 'TASK_COMPLETED':
         case 'COLLISION_DETECTED':
           break
+        case 'MISSION_COMPLETE':
+          window.dispatchEvent(new CustomEvent('mission-complete', { detail: event }))
+          break
       }
     },
     [recordEvent, upsertRobot, setMission, setOnline, recordEnergySample],

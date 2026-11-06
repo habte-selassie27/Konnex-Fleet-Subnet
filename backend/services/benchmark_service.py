@@ -154,6 +154,7 @@ class BenchmarkService:
             ran_at=_text(raw.get("ran_at")) or "",
             git_commit=_text(raw.get("git_commit")) or "",
             source=str(relative),
+            per_robot=raw.get("per_robot") if isinstance(raw.get("per_robot"), list) else [],
         )
 
 

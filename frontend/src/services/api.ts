@@ -64,6 +64,20 @@ export const api = {
     })
   },
 
+  /** Start a backend mission (auto-capture produces a benchmark row). */
+  createMission(payload: {
+    robot_count: number
+    task_count: number
+    seed: number
+    policy: string
+    time_limit_s?: number
+  }): Promise<{ id: string }> {
+    return request<{ id: string }>('/missions/', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
+  },
+
   /** Liveness probe. */
   getHealth(): Promise<HealthStatus> {
     return request<HealthStatus>('/health')
