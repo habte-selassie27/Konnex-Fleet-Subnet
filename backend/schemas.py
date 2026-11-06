@@ -205,3 +205,111 @@ class PaymentDemoResponse(BaseModel):
     decisions: list[AgentDecisionResponse] = Field(default_factory=list)
     transactions: list[PaymentTransactionResponse] = Field(default_factory=list)
     summary: PaymentSummaryResponse
+
+
+class BenchmarkResult(BaseModel):
+    """One measured policy row from experiments/results/**/result.json.
+
+    Values are read from artifacts written by actual runs; unmeasured policies
+    keep ``None`` scores plus a ``skip_reason`` so the gap stays visible
+    (AGENTS.md Law 1).
+    """
+
+    experiment_id: str
+    policy: str
+    scenario_id: str = ""
+    harness: str = ""
+    robot_count: int | None = None
+    n_runs: int = 0
+    seed_range: list[int] = Field(default_factory=list)
+    mean_popw_score: float | None = None
+    std_popw_score: float | None = None
+    mean_success_rate: float | None = None
+    std_success_rate: float | None = None
+    mean_collision_count: float | None = None
+    std_collision_count: float | None = None
+    mean_completion_time_s: float | None = None
+    std_completion_time_s: float | None = None
+    status: str = "NOT_RUN"
+    skip_reason: str = ""
+    ran_at: str = ""
+    git_commit: str = ""
+    source: str = ""
+
+
+# ─── Konnex-aligned validator network (GET /validators/network) ─────────────
+
+
+class ValidatorCheck(BaseModel):
+    """One named assertion made by a role validator."""
+
+    name: str
+    passed: bool
+    detail: str
+
+
+class ValidatorAssessmentResponse(BaseModel):
+    """One validator's independent verdict on the shared mission evidence."""
+
+    validator_id: str
+    role: str
+    verdict: str
+    score: float | None = None
+    checks: list[ValidatorCheck] = Field(default_factory=list)
+    reason: str
+
+
+class ValidatorConsensusResponse(BaseModel):
+    """Aggregated decision over all validator assessments."""
+
+    decision: str
+    accept_votes: int
+    reject_votes: int
+    validator_count: int
+    reason: str
+
+
+class MissionVerificationResponse(BaseModel):
+    """Verification package for one mission snapshot (real evidence only)."""
+
+    mission_id: str
+    scenario_id: str
+    policy: str
+    mission_status: str
+    tasks_completed: int
+    task_count: int
+    collision_count: int
+    failure_count: int
+    elapsed_s: float
+    time_limit_s: float
+    energy_consumed: float
+    evidence_hash: str
+    assessments: list[ValidatorAssessmentResponse]
+    consensus: ValidatorConsensusResponse
+
+
+class ValidatorIdentityResponse(BaseModel):
+    """Registry entry for one role validator."""
+
+    id: str
+    role: str
+    operator: str
+    capabilities: list[str]
+    implementation: str
+    status: str
+
+
+class KonnexValidatorBridgeResponse(BaseModel):
+    """Status of the Konnex protocol bridge (STUB until SDK verified)."""
+
+    adapter_status: str
+    docs_url: str
+    note: str
+
+
+class ValidatorNetworkResponse(BaseModel):
+    """Registry + the verification of the current live mission (if any)."""
+
+    validators: list[ValidatorIdentityResponse]
+    konnex: KonnexValidatorBridgeResponse
+    verification: MissionVerificationResponse | None = None

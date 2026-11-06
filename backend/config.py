@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     cors_origins: list[str] = ["http://localhost:3000"]
     database_url: str = "sqlite+aiosqlite:///./fleet_dev.db"
     artifact_dir: Path = Path("./data/artifacts")
+    # Measured benchmark artifacts written by `make benchmark`; the dashboard
+    # reads these, never invented rows (AGENTS.md Law 1).
+    benchmark_results_dir: Path = Path("./experiments/results")
     minio_endpoint: str = ""  # empty -> local artifact store
     minio_access_key: str = "minioadmin"
     minio_secret_key: str = "minioadmin"

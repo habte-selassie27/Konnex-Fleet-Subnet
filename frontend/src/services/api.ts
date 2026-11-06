@@ -17,6 +17,7 @@ import type {
   RobotFailureResponse,
   RobotState,
   ValidatorContextSnapshot,
+  ValidatorNetwork,
 } from '../types'
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? '/api/v1'
@@ -156,6 +157,14 @@ export const api = {
    */
   getRewardSplit(): Promise<RewardSplit> {
     return request<RewardSplit>('/evaluations/reward-split')
+  },
+
+  /**
+   * Fleet-subnet validator network: registry plus the current mission's
+   * independent role assessments and consensus (real evidence only).
+   */
+  getValidatorNetwork(): Promise<ValidatorNetwork> {
+    return request<ValidatorNetwork>('/validators/network')
   },
 
   /** Validator framing for one evaluation (STUB values until adapter wired). */

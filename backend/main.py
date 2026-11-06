@@ -6,6 +6,7 @@ WebSocket broadcaster), CORS, REST routers under /api/v1 and WS /ws/fleet.
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,6 +16,7 @@ from backend.api.ws.fleet import router as fleet_ws_router
 from backend.config import Settings
 from backend.db.database import Database
 from backend.routers.router import api_router
+from backend.services.benchmark_service import BenchmarkService
 from backend.services.evaluation_service import EvaluationService
 from backend.services.fleet_payment_bridge import FleetPaymentBridge
 from backend.services.fleet_service import FleetAppState
@@ -85,6 +87,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = config
     app.state.db = db
     app.state.evaluations = EvaluationService(db, store)
+    # Benchmark rows come from real `make benchmark` artifacts. Relative paths
+    # resolve against the repo root so the API works from any launch cwd.
+    results_dir = config.benchmark_results_dir
+    if not results_dir.is_absolute():
+        results_dir = Path(__file__).resolve().parent.parent / results_dir
+    app.state.benchmarks = BenchmarkService(results_dir)
     app.state.fleet = FleetAppState(config)
     app.state.payments = PaymentAppState(db, config)
 

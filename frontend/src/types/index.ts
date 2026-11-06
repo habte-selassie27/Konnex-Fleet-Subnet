@@ -371,3 +371,78 @@ export interface ValidatorContextSnapshot {
   _note?: string
   _source: string
 }
+
+// ─── Konnex-aligned validator network (GET /validators/network) ──────────────
+
+export type ValidatorRole = 'execution' | 'safety' | 'performance'
+export type ValidatorVerdict = 'PASS' | 'FAIL' | 'PENDING' | 'INCONCLUSIVE'
+export type ConsensusDecision =
+  | 'ACCEPTED'
+  | 'REJECTED'
+  | 'DISPUTED'
+  | 'INCONCLUSIVE'
+  | 'PENDING'
+
+export interface ValidatorCheck {
+  name: string
+  passed: boolean
+  detail: string
+}
+
+export interface ValidatorAssessment {
+  validator_id: string
+  role: ValidatorRole
+  verdict: ValidatorVerdict
+  /** null until the mission evidence is final — never a fabricated 0. */
+  score: number | null
+  checks: ValidatorCheck[]
+  reason: string
+}
+
+export interface ValidatorConsensus {
+  decision: ConsensusDecision
+  accept_votes: number
+  reject_votes: number
+  validator_count: number
+  reason: string
+}
+
+export interface MissionVerification {
+  mission_id: string
+  scenario_id: string
+  policy: string
+  mission_status: MissionStatus
+  tasks_completed: number
+  task_count: number
+  collision_count: number
+  failure_count: number
+  elapsed_s: number
+  time_limit_s: number
+  energy_consumed: number
+  /** SHA-256 of the canonical evidence manifest. */
+  evidence_hash: string
+  assessments: ValidatorAssessment[]
+  consensus: ValidatorConsensus
+}
+
+export interface ValidatorIdentity {
+  id: string
+  role: ValidatorRole
+  operator: string
+  capabilities: string[]
+  implementation: string
+  status: string
+}
+
+/** Fleet-subnet validators are local; the Konnex protocol bridge is STUB. */
+export interface KonnexValidatorBridge {
+  adapter_status: string
+  docs_url: string
+  note: string
+}
+
+export interface ValidatorNetwork {
+  validators: ValidatorIdentity[]
+  konnex: KonnexValidatorBridge
+  verification: MissionVerification | null
+}

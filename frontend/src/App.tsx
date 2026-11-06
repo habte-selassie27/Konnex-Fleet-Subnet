@@ -3,7 +3,7 @@
 // The viewport is the single dashboard: FleetViewport holds the fleet rail, the
 // scene (SIM engine or live map) and the metrics rail in lockstep via
 // useFleetRail / useMissionView. Below it live the mission overview, the
-// validator evaluation card and the benchmark / payment panels.
+// validator network and the benchmark / payment panels.
 //
 // Bootstraps the WebSocket; every major panel is wrapped in an ErrorBoundary
 // so one crash never takes down the dashboard (AGENTS.md §1.6). The theme (a
@@ -16,8 +16,7 @@ import { BenchmarkTable } from './components/benchmark/BenchmarkTable'
 import { Header } from './components/layout/Header'
 import { FleetViewport } from './components/fleet/FleetViewport'
 import { MissionPanel } from './components/mission/MissionPanel'
-import { EvaluationCard } from './components/validator/EvaluationCard'
-import { ValidatorPanel } from './components/validator/ValidatorPanel'
+import { ValidatorNetworkPanel } from './components/validator/ValidatorNetworkPanel'
 import { ErrorBoundary } from './components/shared/ErrorBoundary'
 import { PaymentPanel } from './components/payments/PaymentPanel'
 import { useUiStore } from './store/uiStore'
@@ -54,11 +53,8 @@ export function App() {
         <ErrorBoundary label="Mission panel">
           <MissionPanel />
         </ErrorBoundary>
-        <ErrorBoundary label="Evaluation card">
-          <EvaluationCard />
-        </ErrorBoundary>
-        <ErrorBoundary label="Validator panel">
-          <ValidatorPanel />
+        <ErrorBoundary label="Validator network">
+          <ValidatorNetworkPanel />
         </ErrorBoundary>
       </div>
 

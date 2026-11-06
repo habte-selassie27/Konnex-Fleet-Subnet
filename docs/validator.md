@@ -140,6 +140,31 @@ missing daemon raises `DockerUnavailableError` rather than silently producing a
 zero score. Tests cover the transport over real pipes and the isolation flags;
 the opt-in end-to-end container test runs when `KONNEX_POLICY_IMAGE` is set.
 
+## Role validator network (dashboard)
+
+`GET /api/v1/validators/network` exposes the fleet subnet's own verification
+layer over the **live mission record** (`validator/network.py`). Three
+role-separated validators receive the same evidence package (SHA-256 manifest)
+and assess it independently:
+
+| Validator | Role | Checks |
+|---|---|---|
+| `validator-execution-01` | mission completion | tasks completed vs assigned, task-record accounting |
+| `validator-safety-01` | physical safety | zero collisions, telemetry present |
+| `validator-performance-01` | operational quality | time budget, energy budget |
+
+Consensus is a 2-of-3 quorum with a **safety veto**: a collision rejects the
+mission regardless of the other votes. A running mission reports `PENDING`
+(never an early accept); missing evidence reports `INCONCLUSIVE`; conflicting
+role verdicts report `DISPUTED`.
+
+The validators are deterministic rule engines, not independent operators, and
+the Konnex protocol bridge (`protocol/konnex/adapter.py`) is still `STUB` — the
+API reports `konnex.adapter_status` and the panel labels it. No Konnex network
+call is made, and no score is invented when evidence is incomplete.
+
+Also available: `GET /api/v1/validators/missions/{mission_id}/verification`.
+
 ## API
 
 ```

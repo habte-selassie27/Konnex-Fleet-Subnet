@@ -112,7 +112,8 @@ src/
     ├── metrics/ScoreGauge.tsx   # PoPW score (animates on change)
     ├── metrics/EnergyChart.tsx  # Energy consumption over time (Recharts, 1 Hz)
     ├── mission/MissionPanel.tsx # Active mission + progress
-    ├── validator/EvaluationCard.tsx
+    ├── validator/ValidatorNetworkPanel.tsx  # Execution/safety/performance + consensus
+    ├── validator/ValidatorRoleRow.tsx       # One role assessment (verdict, checks)
     ├── benchmark/BenchmarkTable.tsx
     └── shared/{OfflineIndicator, ErrorBoundary, StatusBadge, LoadingSpinner}.tsx
 ```
