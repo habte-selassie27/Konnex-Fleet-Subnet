@@ -6,9 +6,11 @@ import type { AgentDecision } from '../../types'
 
 interface AgentDecisionCardProps {
   decision: AgentDecision
+  /** True when the decision came from the local demo script, not live telemetry. */
+  isMock?: boolean
 }
 
-export function AgentDecisionCard({ decision }: AgentDecisionCardProps) {
+export function AgentDecisionCard({ decision, isMock = false }: AgentDecisionCardProps) {
   if (decision.no_action) {
     return (
       <div className="rounded-xl border border-slate-700/60 bg-slate-900 p-4">
@@ -31,9 +33,11 @@ export function AgentDecisionCard({ decision }: AgentDecisionCardProps) {
           <BrainCircuit className="h-3.5 w-3.5" aria-hidden="true" />
           Agent Decision
         </h3>
-        <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-400">
-          MOCK / DEMO
-        </span>
+        {isMock && (
+          <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-400">
+            MOCK / DEMO
+          </span>
+        )}
       </div>
 
       <div className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
