@@ -1,200 +1,178 @@
-import { Play, StopCircle } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { Dices, Loader2, Play } from 'lucide-react'
+import { useMemo, useState } from 'react'
 
-import { api } from '../../services/api'
+import { calculatePopw } from '../../data/popw'
+import { simMissionFromSnapshot } from '../../data/simMission'
+import {
+  SIM_POLICIES,
+  SIM_POLICY_ALGORITHMS,
+  useSimulationProvider,
+  useSimulationSnapshot,
+  type SimPolicy,
+} from '../../simulation/useSimulation'
 
-type Policy = { id: string; name: string; algorithm: string; available: boolean }
+/**
+ * Real, reproducible warehouse_v1 scenarios: 5 carts per mission, one crate
+ * count per scenario from 5 up to 40. Run mission stages that many crates on
+ * the warehouse floor and runs the visible mission in the viewport — the five
+ * carts drive to the crates, lift them and stack them in the storage bin.
+ */
+const ROBOT_COUNT = 5
+const CRATE_COUNTS = Array.from({ length: 36 }, (_, index) => index + 5)
+const DEFAULT_CRATE_COUNT = 20
 
-/** Real, reproducible scenario definitions from experiments/configs (warehouse_v1). */
-const SCENARIOS = [
-  { id: 'warehouse_v1', name: 'Warehouse V1', robot_count: 5, task_count: 20 },
-] as const
+/** Shared control styling — a full 36px hit target so the menus are easy to hit. */
+const CONTROL_CLASS =
+  'h-9 w-full cursor-pointer rounded-md border border-line-strong bg-surface px-2.5 text-xs text-fg transition-colors hover:border-sky-500/60 focus-visible:border-sky-500 disabled:cursor-not-allowed disabled:opacity-60'
 
-/** Valid, reproducible seeds from the experiment configs (exp_001..exp_003). */
-const SEEDS = [1000, 1010, 1020, 1029] as const
-
-type MissionResult = {
-  id: string
-  scenario_id: string
-  status: string
-  policy: string
-  robot_count: number
-  task_count: number
-  completed_tasks: number
-  collision_count: number
-  elapsed_seconds: number
-  popw_score: number | null
-} | null
+function randomSeed(): number {
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+    const buf = new Uint32Array(1)
+    crypto.getRandomValues(buf)
+    return buf[0]
+  }
+  return Math.floor(Math.random() * 2_147_483_647)
+}
 
 export function PolicyRunner() {
-  const [policies, setPolicies] = useState<Policy[]>([])
-  const [policy, setPolicy] = useState<string>('nearest')
-  const [scenario, setScenario] = useState<string>('warehouse_v1')
-  const [seed, setSeed] = useState<number>(1000)
-  const [customSeed, setCustomSeed] = useState<string>('')
-  const [running, setRunning] = useState(false)
+  const [taskCount, setTaskCount] = useState<number>(DEFAULT_CRATE_COUNT)
+  const [seed, setSeed] = useState<string>(() => String(randomSeed()))
+  const [started, setStarted] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [mission, setMission] = useState<MissionResult>(null)
 
-  // Load genuinely registered policies from the backend.
-  useEffect(() => {
-    let cancelled = false
-    api
-      .getPolicies()
-      .then((data) => {
-        if (cancelled) return
-        const valid = data.filter((p) => p.available)
-        setPolicies(valid)
-        if (valid.length > 0 && !valid.some((p) => p.id === policy)) {
-          setPolicy(valid[0].id)
-        }
-      })
-      .catch(() => {
-        // Fall back to the policies the backend allocator actually supports.
-        setPolicies([
-          { id: 'nearest', name: 'nearest', algorithm: 'NearestTaskAllocator', available: true },
-          { id: 'hungarian', name: 'hungarian', algorithm: 'HungarianAllocator', available: true },
-          { id: 'cost_optimizer', name: 'cost_optimizer', algorithm: 'CostOptimizerAllocator', available: true },
-        ])
-      })
-    return () => {
-      cancelled = true
+  const runState = useSimulationProvider((s) => s.runState)
+  const start = useSimulationProvider((s) => s.start)
+  const policy = useSimulationProvider((s) => s.policy)
+  const setPolicy = useSimulationProvider((s) => s.setPolicy)
+  const { snapshot } = useSimulationSnapshot()
+
+  const running = runState === 'running'
+
+  // The panel reports the run it started, from the same engine snapshot the
+  // scene animates — never a separate backend number (AGENTS.md Law 1).
+  const mission = useMemo(() => {
+    if (!started || snapshot === null) return null
+    const view = simMissionFromSnapshot(snapshot, runState)
+    const popw =
+      view.elapsed_seconds > 0
+        ? (view.popw_score ??
+          calculatePopw({
+            tasks_completed: view.completed_tasks,
+            tasks_total: view.total_tasks,
+            elapsed_s: view.elapsed_seconds,
+            time_limit_s: view.time_limit_s,
+            collision_count: view.collision_count,
+            energy_consumed: view.energy_consumed,
+            energy_budget: view.energy_budget,
+            failure_count: view.failure_count,
+          })?.final ??
+          null)
+        : null
+    return { view, popw }
+  }, [started, snapshot, runState])
+
+  const handleRun = () => {
+    const resolvedSeed = Number.parseInt(seed.trim(), 10)
+    if (!Number.isFinite(resolvedSeed)) {
+      setError('Enter a valid integer seed')
+      return
     }
-  }, [])
-
-  const isCustomSeed = seed.toString() === 'custom'
-
-  const handleRun = async () => {
-    setRunning(true)
     setError(null)
-    setMission(null)
-    try {
-      const resolvedSeed = isCustomSeed ? Number(customSeed) : seed
-      if (Number.isNaN(resolvedSeed)) {
-        throw new Error('Invalid seed')
-      }
-      const created = await api.createMission({
-        robot_count: 5,
-        task_count: 20,
-        seed: resolvedSeed,
-        policy,
-        time_limit_s: 600,
-      })
-      setMission({
-        id: created.id,
-        scenario_id: '',
-        status: 'running',
-        policy,
-        robot_count: 5,
-        task_count: 20,
-        completed_tasks: 0,
-        collision_count: 0,
-        elapsed_seconds: 0,
-        popw_score: null,
-      })
-      await pollMission(created.id)
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Mission creation failed')
-    } finally {
-      setRunning(false)
-    }
-  }
-
-  const pollMission = async (missionId: string) => {
-    for (let i = 0; i < 120; i++) {
-      if (running === false) return
-      try {
-        const m = await fetch(`/api/v1/missions/${missionId}`, {
-          headers: { 'X-Fleet-API-Key': 'dev-only-key' },
-        })
-        if (!m.ok) throw new Error(`mission fetch failed: ${m.status}`)
-        const data = (await m.json()) as MissionResult
-        if (!data) throw new Error('Empty mission response')
-        setMission(data)
-        if (data.status === 'complete' || data.status === 'failed' || data.status === 'timed_out') {
-          return
-        }
-      } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : 'Failed to poll mission')
-        return
-      }
-      await new Promise((r) => setTimeout(r, 1000))
-    }
-    setError('Mission timed out while polling')
+    setStarted(true)
+    // Stages this exact floor (crate count + seed) and runs it in the viewport,
+    // dispatching crates with the selected allocator.
+    start({ itemCount: taskCount, seed: resolvedSeed, policy })
   }
 
   return (
     <section aria-label="Run mission" className="rounded-xl border border-line/60 bg-panel p-4 transition-colors duration-200">
       <h2 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted">
         <Play className="h-3.5 w-3.5" aria-hidden="true" />
-        Policy Runner
+        Run Mission
       </h2>
 
-      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="flex flex-col gap-1">
-          <label className="text-[10px] font-medium text-subtle uppercase tracking-wide">Policy</label>
-          <select
-            value={policy}
-            onChange={(e) => setPolicy(e.target.value)}
-            className="rounded-md border border-line/60 bg-surface px-2 py-1.5 text-xs text-fg"
-            aria-label="Allocation policy"
-            disabled={running}
+          <label
+            htmlFor="policy-runner-policy"
+            className="text-[10px] font-medium text-subtle uppercase tracking-wide"
           >
-            {policies.map((p) => (
-              <option key={p.id} value={p.id} disabled={!p.available}>
-                {p.name} {p.available ? '' : ' (unavailable)'}
+            Policy
+          </label>
+          <select
+            id="policy-runner-policy"
+            value={policy}
+            onChange={(e) => setPolicy(e.target.value as SimPolicy)}
+            className={CONTROL_CLASS}
+            disabled={running}
+            aria-label="Allocation policy"
+          >
+            {SIM_POLICIES.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+          <p className="mt-0.5 text-[10px] text-subtle">{SIM_POLICY_ALGORITHMS[policy]}</p>
+        </div>
+
+        <div className="flex flex-col gap-1">
+          <label
+            htmlFor="policy-runner-scenario"
+            className="text-[10px] font-medium text-subtle uppercase tracking-wide"
+          >
+            Scenario
+          </label>
+          <select
+            id="policy-runner-scenario"
+            value={taskCount}
+            onChange={(e) => setTaskCount(Number.parseInt(e.target.value, 10))}
+            className={CONTROL_CLASS}
+            disabled={running}
+            aria-label="Scenario — crates to pick up"
+          >
+            {CRATE_COUNTS.map((crates) => (
+              <option key={crates} value={crates}>
+                Warehouse V1 · {ROBOT_COUNT} robots · {crates} crates
               </option>
             ))}
           </select>
           <p className="mt-0.5 text-[10px] text-subtle">
-            {policies.find((p) => p.id === policy)?.algorithm ?? ''}
+            {ROBOT_COUNT} robots pick up {taskCount} crates.
           </p>
         </div>
 
         <div className="flex flex-col gap-1">
-          <label className="text-[10px] font-medium text-subtle uppercase tracking-wide">Scenario</label>
-          <select
-            value={scenario}
-            onChange={(e) => setScenario(e.target.value)}
-            className="rounded-md border border-line/60 bg-surface px-2 py-1.5 text-xs text-fg"
-            disabled
-            aria-label="Scenario"
+          <label
+            htmlFor="policy-runner-seed"
+            className="text-[10px] font-medium text-subtle uppercase tracking-wide"
           >
-            {SCENARIOS.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name} ({s.robot_count} robots · {s.task_count} tasks)
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="flex flex-col gap-1">
-          <label className="text-[10px] font-medium text-subtle uppercase tracking-wide">Seed</label>
-          <select
-            value={seed}
-            onChange={(e) => {
-              setSeed(Number(e.target.value))
-              setCustomSeed('')
-            }}
-            className="rounded-md border border-line/60 bg-surface px-2 py-1.5 text-xs text-fg"
-            disabled={running}
-          >
-            {SEEDS.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-            <option value="custom">Custom…</option>
-          </select>
-          {isCustomSeed && (
+            Seed
+          </label>
+          <div className="flex items-center gap-1.5">
             <input
+              id="policy-runner-seed"
               type="number"
-              value={customSeed}
-              onChange={(e) => setCustomSeed(e.target.value)}
-              className="mt-1 rounded-md border border-line/60 bg-surface px-2 py-1 text-xs text-fg w-full"
-              placeholder="e.g. 1015"
+              value={seed}
+              onChange={(e) => setSeed(e.target.value)}
+              className="min-w-0 flex-1 rounded-md border border-line-strong bg-surface px-2.5 py-2 text-xs text-fg transition-colors hover:border-sky-500/60 focus-visible:border-sky-500"
+              disabled={running}
+              aria-label="Mission seed"
+              placeholder="Any integer seed"
+              step="1"
             />
-          )}
+            <button
+              type="button"
+              onClick={() => setSeed(String(randomSeed()))}
+              disabled={running}
+              className="shrink-0 rounded-md border border-line/60 bg-surface p-1.5 text-muted hover:text-fg disabled:opacity-50"
+              aria-label="Generate random seed"
+              title="Generate random seed"
+            >
+              <Dices className="h-3.5 w-3.5" aria-hidden="true" />
+            </button>
+          </div>
+          <p className="text-[10px] text-subtle">Arbitrary/dynamic — same seed = reproducible run.</p>
         </div>
 
         <div className="flex flex-col gap-1">
@@ -202,21 +180,24 @@ export function PolicyRunner() {
           <button
             type="button"
             onClick={handleRun}
-            disabled={running || policies.find((p) => p.id === policy)?.available === false}
+            disabled={running}
             className="flex items-center gap-1.5 rounded-md bg-sky-500 px-2.5 py-1.5 text-xs font-medium text-white disabled:opacity-50"
           >
             {running ? (
               <>
-                <StopCircle className="h-3 w-3" aria-hidden="true" />
-                Stopping…
+                <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+                Running…
               </>
             ) : (
               <>
                 <Play className="h-3 w-3" aria-hidden="true" />
-                Run mission
+                {runState === 'finished' ? 'Run again' : 'Run mission'}
               </>
             )}
           </button>
+          <p className="mt-0.5 text-[10px] text-subtle">
+            Runs on the warehouse floor — carts pick the crates and stack them in the storage bin.
+          </p>
         </div>
       </div>
 
@@ -230,38 +211,38 @@ export function PolicyRunner() {
         <div className="mt-3 rounded-md border border-line/60 bg-surface p-3">
           <div className="flex items-center justify-between gap-2 mb-1">
             <span className="text-[10px] font-medium text-subtle">Mission</span>
-            <span className="font-mono text-xs text-fg">
-              {mission.id.slice(0, 8)}
-            </span>
+            <span className="font-mono text-xs text-fg">{mission.view.mission_id}</span>
           </div>
           <table className="w-full text-xs">
             <tbody>
               <tr className="border-b border-line/40 last:border-b-0">
-                <td className="py-1 pr-2 text-subtle">Policy</td>
-                <td className="py-1 pr-2 font-mono text-fg">{mission.policy}</td>
-              </tr>
-              <tr className="border-b border-line/40 last:border-b-0">
                 <td className="py-1 pr-2 text-subtle">Status</td>
-                <td className="py-1 pr-2 font-mono text-fg capitalize">{mission.status}</td>
+                <td className="py-1 pr-2 font-mono text-fg capitalize">{mission.view.status}</td>
               </tr>
               <tr className="border-b border-line/40 last:border-b-0">
-                <td className="py-1 pr-2 text-subtle">Tasks</td>
+                <td className="py-1 pr-2 text-subtle">Seed</td>
+                <td className="py-1 pr-2 font-mono text-fg">{snapshot?.seed ?? '—'}</td>
+              </tr>
+              <tr className="border-b border-line/40 last:border-b-0">
+                <td className="py-1 pr-2 text-subtle">Crates stacked</td>
                 <td className="py-1 pr-2 font-mono text-fg">
-                  {mission.completed_tasks}/{mission.task_count}
+                  {mission.view.completed_tasks}/{mission.view.total_tasks}
                 </td>
               </tr>
               <tr className="border-b border-line/40 last:border-b-0">
                 <td className="py-1 pr-2 text-subtle">Collisions</td>
-                <td className="py-1 pr-2 font-mono text-fg">{mission.collision_count}</td>
+                <td className="py-1 pr-2 font-mono text-fg">{mission.view.collision_count}</td>
               </tr>
               <tr className="border-b border-line/40 last:border-b-0">
                 <td className="py-1 pr-2 text-subtle">Elapsed</td>
-                <td className="py-1 pr-2 font-mono text-fg">{mission.elapsed_seconds.toFixed(1)} s</td>
+                <td className="py-1 pr-2 font-mono text-fg">
+                  {mission.view.elapsed_seconds.toFixed(1)} s
+                </td>
               </tr>
               <tr className="last:border-b-0">
                 <td className="py-1 pr-2 text-subtle">PoPW Score</td>
                 <td className="py-1 pr-2 font-mono text-fg font-bold">
-                  {mission.popw_score === null ? '—' : mission.popw_score.toFixed(1)}
+                  {mission.popw === null ? '—' : mission.popw.toFixed(1)}
                 </td>
               </tr>
             </tbody>
