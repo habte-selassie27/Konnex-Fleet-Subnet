@@ -149,8 +149,13 @@ class FleetAppState:
         return self._mission
 
     async def start(self) -> None:
-        """Start the live orchestration loop."""
-        self.configure()
+        """Start the live orchestration loop.
+
+        Does NOT auto-start a mission. Missions are started explicitly via
+        start_mission() (Policy Runner or POST /api/v1/missions/). The run()
+        loop is a no-op until a mission exists, so the backend boots cleanly
+        with no running mission.
+        """
         self._task = asyncio.create_task(self._orchestrator.run())
 
     def start_mission(
