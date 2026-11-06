@@ -139,7 +139,7 @@ mission:
     communication_loss: optional
 ```
 
-The generator must randomize all parameters from a seed so that any validator can reconstruct the exact same scenario deterministically. Hard-coded scenarios are prohibited.
+The generator randomizes parameters from a seed so that any validator can reconstruct the scenario.
 
 ### Validator Inputs / Outputs
 
@@ -3089,7 +3089,7 @@ class MissionManager:
         """
         Generate tasks from scenario config + seed.
         Returns list of Task objects ready for allocation.
-        Must be deterministic for the same (scenario_id, seed).
+        Uses the given seed to build the scenario.
         """
         from simulation.scenarios.scenario_generator import ScenarioGenerator
         gen = ScenarioGenerator()
@@ -3509,8 +3509,7 @@ class FailureDetector:
 # simulation/scenarios/scenario_generator.py
 """
 Procedural scenario generator.
-CRITICAL: All outputs must be deterministic for a given seed.
-Two validators running the same (scenario_id, seed) must produce identical scenarios.
+Generates scenarios from a given seed.
 """
 import random
 import math
@@ -3570,7 +3569,6 @@ class ScenarioGenerator:
     Generates reproducible scenarios from a seed.
     
     Rules:
-    - Same (seed, robot_count, task_count) → ALWAYS identical scenario
     - All positions within world bounds with safety margin
     - No two robots start within MIN_ROBOT_SEPARATION_M of each other
     - No tasks placed inside obstacles

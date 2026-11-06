@@ -1,6 +1,8 @@
 import { Dices, Loader2, Play } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
+import { api } from '../../services/api'
+
 import { calculatePopw } from '../../data/popw'
 import { simMissionFromSnapshot } from '../../data/simMission'
 import {
@@ -39,6 +41,7 @@ export function PolicyRunner() {
   const [seed, setSeed] = useState<string>(() => String(randomSeed()))
   const [started, setStarted] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [missionId, setMissionId] = useState<string | null>(null)
 
   const runState = useSimulationProvider((s) => s.runState)
   const start = useSimulationProvider((s) => s.start)
@@ -71,7 +74,7 @@ export function PolicyRunner() {
     return { view, popw }
   }, [started, snapshot, runState])
 
-  const handleRun = () => {
+  const handleRun = async () => {
     const resolvedSeed = Number.parseInt(seed.trim(), 10)
     if (!Number.isFinite(resolvedSeed)) {
       setError('Enter a valid integer seed')
@@ -79,6 +82,21 @@ export function PolicyRunner() {
     }
     setError(null)
     setStarted(true)
+    // Start a real backend mission so the run is captured as a benchmark row —
+    // sends the actual crate count, seed and policy (no hardcoded 20 tasks,
+    // no fixed seed = 42).
+    try {
+      const created = await api.createMission({
+        robot_count: ROBOT_COUNT,
+        task_count: taskCount,
+        seed: resolvedSeed,
+        policy,
+        time_limit_s: 600,
+      })
+      setMissionId(created.id)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Mission creation failed')
+    }
     // Stages this exact floor (crate count + seed) and runs it in the viewport,
     // dispatching crates with the selected allocator.
     start({ itemCount: taskCount, seed: resolvedSeed, policy })
@@ -211,7 +229,7 @@ export function PolicyRunner() {
         <div className="mt-3 rounded-md border border-line/60 bg-surface p-3">
           <div className="flex items-center justify-between gap-2 mb-1">
             <span className="text-[10px] font-medium text-subtle">Mission</span>
-            <span className="font-mono text-xs text-fg">{mission.view.mission_id}</span>
+            <span className="font-mono text-xs text-fg">{missionId ?? mission.view.mission_id}</span>
           </div>
           <table className="w-full text-xs">
             <tbody>
