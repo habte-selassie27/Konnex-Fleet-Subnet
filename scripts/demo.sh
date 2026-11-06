@@ -111,6 +111,4 @@ else
 fi
 
 echo ""
-echo "Demo running. The mission completes in roughly 3-4 minutes."
-echo "Open http://127.0.0.1:3014 to watch the fleet (live PoPW score, policy, energy chart)."
-echo "The FleetPay panel shows live mission-driven payments (plus MOCK/DEMO settlement)."
+echo "Demo running. Start a mission from the Policy Runner panel at http://127.0.0.1:3014 (or POST /api/v1/missions/) to watch the fleet and live PoPW score."
