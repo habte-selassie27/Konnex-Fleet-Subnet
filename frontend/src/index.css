@@ -48,6 +48,20 @@
   :focus-visible {
     @apply outline-2 outline-offset-2 outline-sky-400;
   }
+
+  /* Native select popups ignore utility classes, so pin the option colours to
+     the active palette. Without this the platform default popup renders
+     low-contrast rows that read as disabled. */
+  select option {
+    background-color: rgb(var(--panel));
+    color: rgb(var(--fg));
+  }
+
+  select option:checked,
+  select option:hover {
+    background-color: rgb(var(--elevated));
+    color: rgb(var(--fg));
+  }
 }
 
 @layer utilities {

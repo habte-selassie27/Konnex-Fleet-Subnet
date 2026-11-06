@@ -283,6 +283,19 @@ describe('random cart start positions', () => {
   })
 })
 
+describe('dispatch policies', () => {
+  it('fills the bin under every allocator', () => {
+    for (const policy of ['nearest', 'hungarian', 'cost_optimizer'] as const) {
+      const engine = new SimulationEngine()
+      engine.reset(4242, 12, policy)
+      expect(engine.policy).toBe(policy)
+      runUntil(engine, () => engine.binFull(), 900)
+      expect(engine.binFull(), policy).toBe(true)
+      expect(engine.snapshot().policy).toBe(policy)
+    }
+  })
+})
+
 describe('end of a run — the fleet parks clear of the bin', () => {
   it('parks each cart on its own spot, away from the deposit frontage', () => {
     const engine = new SimulationEngine()

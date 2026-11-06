@@ -12,6 +12,7 @@ import {
   CART_BATTERY_UNITS,
   DEFAULT_ITEMS,
   EngineSnapshot,
+  SimPolicy,
   SimulationEngine,
   clampItemCount,
 } from './engine'
@@ -29,6 +30,9 @@ export {
   MIN_ITEMS,
   MAX_ITEMS,
   DEFAULT_ITEMS,
+  SIM_POLICIES,
+  SIM_POLICY_ALGORITHMS,
+  type SimPolicy,
   clampItemCount,
   randomItemCount,
   DEPOT_CENTER,
@@ -86,14 +90,19 @@ export const useSimulationProvider = create<{
   itemCount: number
   /** seed of the scenario currently staged or running */
   seed: number
+  /** allocator dispatching crates to carts (also carried by each snapshot) */
+  policy: SimPolicy
+  /** Switch the dispatch allocator; applies to the current run and later runs. */
+  setPolicy: (policy: SimPolicy) => void
   /**
    * Run a mission. A scenario staged by reset() (idle, clock at zero, same crate
-   * count) is run exactly as it stands; anything else — a finished run, or an
-   * explicit crate count from the setup form (which also restarts a live run) —
-   * stages a fresh run from a new random seed, so every run gets a different
-   * crate drop and a different cart start layout.
+   * count) is run exactly as it stands; anything else — a finished run, an
+   * explicit crate count from the setup form, or an explicit seed from the Run
+   * Mission panel — stages a fresh run, so every run gets a different crate drop
+   * and a different cart start layout. Providing `seed` makes the staged floor
+   * reproducible from that seed alone.
    */
-  start: (opts?: { itemCount?: number }) => void
+  start: (opts?: { itemCount?: number; seed?: number; policy?: SimPolicy }) => void
   pause: () => void
   resume: () => void
   stop: () => void
@@ -182,11 +191,13 @@ export const useSimulationProvider = create<{
    * Start (or restart) a run. Idempotent while running so a double click — or a
    * double-invoked mount effect — never rewinds a live run.
    */
-  const startRun = (opts?: { itemCount?: number }) => {
+  const startRun = (opts?: { itemCount?: number; seed?: number; policy?: SimPolicy }) => {
     // Idempotent while running (double click, double-invoked mount effect) — but
-    // an explicit crate count from the setup form always stages that new run.
-    if (runState === 'running' && opts?.itemCount === undefined) return
+    // an explicit crate count or seed always stages that new run.
+    if (runState === 'running' && opts?.itemCount === undefined && opts?.seed === undefined) return
     cancelLoop()
+
+    const policy = opts?.policy ?? get().policy
 
     // A brand-new engine holds the constructor's default scenario, which is not
     // staged for this run — only reset() stages one.
@@ -195,19 +206,36 @@ export const useSimulationProvider = create<{
     engine = current
 
     const count = clampItemCount(opts?.itemCount ?? get().itemCount)
-    // A scenario staged by reset() and never played yet is run exactly as staged.
-    const staged = !fresh && runState === 'idle' && current.simTime === 0 && current.itemCount === count
+    // A scenario staged by reset() and never played yet is run exactly as staged
+    // — unless the caller named a seed, which must produce that exact floor.
+    const staged =
+      !fresh &&
+      runState === 'idle' &&
+      current.simTime === 0 &&
+      current.itemCount === count &&
+      opts?.seed === undefined
     if (!staged) {
-      seed = rollSeed()
-      current.reset(seed, count)
+      seed = opts?.seed === undefined ? rollSeed() : Math.trunc(opts.seed)
+      current.reset(seed, count, policy)
       useSimStore.getState().reset()
       useSimStore.setState({ engine: current })
+    } else {
+      // A staged floor runs as-is; only the allocator can change on this path.
+      current.policy = policy
     }
 
     lastFrameAt = 0
     lastSnapshotAt = 0
     runState = 'running'
-    set({ engine: current, initialized: true, mode: 'sim', runState, seed: current.seed, itemCount: count })
+    set({
+      engine: current,
+      initialized: true,
+      mode: 'sim',
+      runState,
+      seed: current.seed,
+      itemCount: count,
+      policy,
+    })
     // prime the first snapshot so React shows something immediately
     publish(true)
     rafId = requestAnimationFrame(loop)
@@ -220,8 +248,13 @@ export const useSimulationProvider = create<{
     runState: 'idle',
     itemCount: DEFAULT_ITEMS,
     seed,
+    policy: 'nearest',
     start(opts) {
       startRun(opts)
+    },
+    setPolicy(policy) {
+      if (engine) engine.policy = policy
+      set({ policy })
     },
     pause() {
       if (runState !== 'running') return
@@ -253,7 +286,7 @@ export const useSimulationProvider = create<{
       if (!engine) engine = new SimulationEngine()
       seed = rollSeed()
       const count = clampItemCount(get().itemCount)
-      engine.reset(seed, count)
+      engine.reset(seed, count, get().policy)
       useSimStore.getState().reset()
       useSimStore.setState({ engine })
       lastFrameAt = 0

@@ -6,12 +6,13 @@ import { useEffect, useRef } from 'react'
 import { useSimulationProvider } from '../simulation/useSimulation'
 import { api } from '../services/api'
 
-const POLICY = 'nearest'
-
 export function useAutoCaptureSim(): void {
   const runState = useSimulationProvider((s) => s.runState)
   const seed = useSimulationProvider((s) => s.seed)
   const itemCount = useSimulationProvider((s) => s.itemCount)
+  // Capture the allocator the run actually used, so the benchmark row is labeled
+  // with the policy that produced it.
+  const policy = useSimulationProvider((s) => s.policy)
   const firedRef = useRef<number | null>(null)
 
   useEffect(() => {
@@ -23,11 +24,11 @@ export function useAutoCaptureSim(): void {
         robot_count: 5,
         task_count: Math.max(1, itemCount),
         seed,
-        policy: POLICY,
+        policy,
         time_limit_s: 600,
       })
       .catch(() => {
         // Non-fatal: benchmark capture is best-effort.
       })
-  }, [runState, seed, itemCount])
+  }, [runState, seed, itemCount, policy])
 }

@@ -363,6 +363,29 @@ export interface RobotSim {
   collisionCooldown: number
 }
 
+// ─── Dispatch policy ───────────────────────────────────────────────────────────
+
+/**
+ * Which allocator dispatches the floor crates to the carts.
+ *
+ * - `nearest`        — contract-net auction: the cheapest idle cart takes the
+ *                      next crate (greedy, one dispatch per tick).
+ * - `hungarian`      — optimal one-to-one matching of every idle cart to a
+ *                      crate each dispatch round (global minimum total cost).
+ * - `cost_optimizer` — multi-factor cost: distance, battery reserve and local
+ *                      congestion, so a low-battery cart is not sent across the
+ *                      floor and converging carts are spread out.
+ */
+export type SimPolicy = 'nearest' | 'hungarian' | 'cost_optimizer'
+
+export const SIM_POLICIES: SimPolicy[] = ['nearest', 'hungarian', 'cost_optimizer']
+
+export const SIM_POLICY_ALGORITHMS: Record<SimPolicy, string> = {
+  nearest: 'NearestTaskAllocator',
+  hungarian: 'HungarianAllocator',
+  cost_optimizer: 'CostOptimizerAllocator',
+}
+
 // ─── Cargo task ─────────────────────────────────────────────────────────────────
 
 export interface CargoTask {
@@ -446,10 +469,75 @@ export interface EngineSnapshot {
   /** bin slots this run has to fill (= itemCount) */
   binCapacity: number
   binFull: boolean
+  /** allocator dispatching crates to carts for this run */
+  policy: SimPolicy
 }
 
 const THROUGHPUT_WINDOW_S = 60
 const EVENT_LOG_LIMIT = 40
+
+/**
+ * Hungarian / Kuhn-Munkres optimal assignment for a rectangular cost matrix
+ * (rows must be the smaller side; callers transpose when they are not).
+ * Returns `[row, col]` pairs minimising the total cost.
+ */
+function optimalPairs(cost: number[][]): Array<[number, number]> {
+  const n = cost.length
+  if (n === 0) return []
+  const m = cost[0].length
+  if (m === 0) return []
+
+  const u = new Array<number>(n + 1).fill(0)
+  const v = new Array<number>(m + 1).fill(0)
+  const p = new Array<number>(m + 1).fill(0)
+  const way = new Array<number>(m + 1).fill(0)
+
+  for (let i = 1; i <= n; i++) {
+    p[0] = i
+    let j0 = 0
+    const minv = new Array<number>(m + 1).fill(Infinity)
+    const used = new Array<boolean>(m + 1).fill(false)
+    do {
+      used[j0] = true
+      const i0 = p[j0]
+      let delta = Infinity
+      let j1 = 0
+      for (let j = 1; j <= m; j++) {
+        if (used[j]) continue
+        const cur = cost[i0 - 1][j - 1] - u[i0] - v[j]
+        if (cur < minv[j]) {
+          minv[j] = cur
+          way[j] = j0
+        }
+        if (minv[j] < delta) {
+          delta = minv[j]
+          j1 = j
+        }
+      }
+      for (let j = 0; j <= m; j++) {
+        if (used[j]) {
+          u[p[j]] += delta
+          v[j] -= delta
+        } else {
+          minv[j] -= delta
+        }
+      }
+      j0 = j1
+    } while (p[j0] !== 0)
+
+    do {
+      const j1 = way[j0]
+      p[j0] = p[j1]
+      j0 = j1
+    } while (j0 !== 0)
+  }
+
+  const pairs: Array<[number, number]> = []
+  for (let j = 1; j <= m; j++) {
+    if (p[j] !== 0) pairs.push([p[j] - 1, j - 1])
+  }
+  return pairs
+}
 
 /** Deterministic PRNG (mulberry32) so a reload reproduces the same mission. */
 function mulberry32(seed: number): () => number {
@@ -483,6 +571,8 @@ export class SimulationEngine {
   public energyUsed = 0
   public events: SimEvent[] = []
 
+  /** allocator dispatching crates to carts (see SimPolicy) */
+  public policy: SimPolicy = 'nearest'
   /** seed of the current run; reset(seed) pins it, the provider rolls one per run */
   public seed = 1337
   /** crates dropped on the floor for this run (MIN_ITEMS..MAX_ITEMS) */
@@ -513,7 +603,11 @@ export class SimulationEngine {
    * seed always stages the same crate drop cells and the same cart starts, so a
    * run can be replayed — but a new seed gives a genuinely different floor.
    */
-  reset(seed = 1337, itemCount: number = DEFAULT_ITEMS): void {
+  reset(
+    seed = 1337,
+    itemCount: number = DEFAULT_ITEMS,
+    policy: SimPolicy = this.policy,
+  ): void {
     this.robots.length = 0
     this.tasks.length = 0
     this.depot = makeDepot()
@@ -532,6 +626,7 @@ export class SimulationEngine {
     this.robotStartCells.clear()
     this.rand = mulberry32(seed)
     this.seed = seed
+    this.policy = policy
     this.itemCount = clampItemCount(itemCount)
     this.binCapacity = this.itemCount
     // 9 bays × 4 layers = 36 crates. A run that drops more than that needs
@@ -864,6 +959,28 @@ export class SimulationEngine {
     return { x: col, z: APPROACH_ROW }
   }
 
+  /**
+   * Dispatch cost for one cart/crate pair, in metres. Each policy uses the same
+   * inputs but weighs them differently, so the three runs genuinely differ.
+   */
+  private assignmentCost(robot: RobotSim, task: CargoTask): number {
+    const d = distance({ x: robot.x, z: robot.z }, task.pickup)
+    if (this.policy === 'cost_optimizer') {
+      // Battery reserve matters more than a few metres saved, and carts that are
+      // already bunched together cost more so the fleet spreads out.
+      const batteryPenalty = (1 - robot.battery) * 20
+      const neighbours = this.robots.filter(
+        (other) =>
+          other.id !== robot.id &&
+          distance({ x: other.x, z: other.z }, { x: robot.x, z: robot.z }) < 4,
+      ).length
+      const congestion = neighbours / Math.max(1, this.robots.length - 1)
+      return d * 0.6 + batteryPenalty + congestion * 12
+    }
+    // `nearest` and the per-pair cost the Hungarian assignment minimises.
+    return d + 3.0 * (1 - robot.battery)
+  }
+
   /** Contract-Net style auction: assign the cheapest idle cart to a task. */
   auctionTask(task: CargoTask): boolean {
     const candidates = this.robots.filter(
@@ -874,14 +991,47 @@ export class SimulationEngine {
     let best: RobotSim | null = null
     let bestCost = Infinity
     for (const r of candidates) {
-      const d = distance({ x: r.x, z: r.z }, task.pickup)
-      const cost = d + 3.0 * (1 - r.battery)
+      const cost = this.assignmentCost(r, task)
       if (cost < bestCost) {
         bestCost = cost
         best = r
       }
     }
     if (!best) return false
+
+    return this.dispatch(best, task)
+  }
+
+  /**
+   * Optimal one-to-one matching for every idle cart this round. Rows are the
+   * smaller side (carts or crates), so the matrix is transposed whenever there
+   * are fewer crates left than idle carts.
+   */
+  private dispatchBatch(): void {
+    const idle = this.robots.filter(
+      (r) => r.nav_state === 'idle' && r.task_id === null && r.battery > 0.15,
+    )
+    const pending = this.tasks.filter((t) => t.status === 'bouncing')
+    if (idle.length === 0 || pending.length === 0) return
+
+    if (idle.length <= pending.length) {
+      const cost = idle.map((robot) => pending.map((task) => this.assignmentCost(robot, task)))
+      for (const [robotIndex, taskIndex] of optimalPairs(cost)) {
+        this.dispatch(idle[robotIndex], pending[taskIndex])
+      }
+      return
+    }
+
+    const cost = pending.map((task) => idle.map((robot) => this.assignmentCost(robot, task)))
+    for (const [taskIndex, robotIndex] of optimalPairs(cost)) {
+      this.dispatch(idle[robotIndex], pending[taskIndex])
+    }
+  }
+
+  /** Book a stack slot and send `robot` to `task`'s crate. */
+  private dispatch(robot: RobotSim, task: CargoTask): boolean {
+    if (robot.nav_state !== 'idle' || robot.task_id !== null) return false
+    if (task.status !== 'bouncing') return false
 
     const stack = this.reserveSlot()
     if (!stack) {
@@ -890,24 +1040,24 @@ export class SimulationEngine {
       return false
     }
 
-    const approach = this.approachCellFor(best, task.pickupCell)
-    const path = toWorldPath(findPath(worldToCell(best.x, best.z), approach))
+    const approach = this.approachCellFor(robot, task.pickupCell)
+    const path = toWorldPath(findPath(worldToCell(robot.x, robot.z), approach))
     if (path.length === 0) {
       this.releaseSlot(stack)
       return false
     }
 
-    best.assignedTaskId = task.id
-    best.depositStack = stack
-    best.path = path
-    best.pathIndex = 0
-    best.liftY = LIFT_LOW
-    best.forkExtension = 0
-    best.animT = 0
-    best.nav_state = 'moving_to_cargo'
+    robot.assignedTaskId = task.id
+    robot.depositStack = stack
+    robot.path = path
+    robot.pathIndex = 0
+    robot.liftY = LIFT_LOW
+    robot.forkExtension = 0
+    robot.animT = 0
+    robot.nav_state = 'moving_to_cargo'
 
     task.status = 'assigned'
-    task.assignedRobot = best.id
+    task.assignedRobot = robot.id
     return true
   }
 
@@ -1020,9 +1170,12 @@ export class SimulationEngine {
   }
 
   private director(): void {
-    // Every crate is already staged by reset(), so the director only auctions
+    // Every crate is already staged by reset(), so the director only dispatches
     // work — there is no spawn timer and no crate can appear during the run.
-    //
+    if (this.policy === 'hungarian') {
+      this.dispatchBatch()
+      return
+    }
     // one auction per tick is plenty at 60 Hz
     for (const task of this.tasks) {
       if (task.status !== 'bouncing') continue
@@ -1274,6 +1427,7 @@ export class SimulationEngine {
       itemCount: this.itemCount,
       binCapacity: this.binCapacity,
       binFull: this.binFull(),
+      policy: this.policy,
     }
   }
 }
