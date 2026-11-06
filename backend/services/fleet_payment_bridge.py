@@ -159,6 +159,30 @@ class FleetPaymentBridge:
             )
             score = self._scorer.score(result).final
 
+            # Per-robot contribution breakdown (real, from tracked mission state).
+            per_robot = {}
+            if mission is not None:
+                for task in getattr(mission, "tasks", []) or []:
+                    rid = getattr(task, "assigned_robot_id", None) or getattr(task, "assigned_robot", None)
+                    if not rid:
+                        continue
+                    bucket = per_robot.setdefault(rid, {"robot_id": rid, "tasks_completed": 0, "tasks_assigned": 0})
+                    bucket["tasks_assigned"] += 1
+                    if getattr(task, "status", None) == "completed":
+                        bucket["tasks_completed"] += 1
+            # Merge live robot state (battery/position) for context.
+            robot_state_by_id = {getattr(r, "id", None): r for r in (state.robots or [])}
+            per_robot_list = []
+            for rid, info in per_robot.items():
+                rs = robot_state_by_id.get(rid)
+                per_robot_list.append({
+                    "robot_id": rid,
+                    "tasks_completed": info["tasks_completed"],
+                    "tasks_assigned": info["tasks_assigned"],
+                    "battery_pct": getattr(rs, "battery_pct", None) if rs is not None else None,
+                    "final_nav_state": getattr(getattr(rs, "nav_state", None), "value", None) if rs is not None else None,
+                })
+
             try:
                 git_commit = subprocess.check_output(
                     ["git", "rev-parse", "HEAD"], stderr=subprocess.DEVNULL
@@ -182,6 +206,7 @@ class FleetPaymentBridge:
                 "std_completion_time_s": 0.0,
                 "status": "COMPLETE",
                 "harness": "live_mission",
+                "per_robot": per_robot_list,
                 "seed_range": [getattr(mission, "seed", 0) if mission else 0],
                 "ran_at": _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime()),
                 "git_commit": git_commit,
