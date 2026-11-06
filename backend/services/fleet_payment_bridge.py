@@ -18,11 +18,16 @@ robot state the orchestrator actually reported during a real run (Law 1).
 from __future__ import annotations
 
 import asyncio
+import json
+import subprocess
+import time as _time
+from pathlib import Path
 
 import structlog
 
 from backend.config import Settings
 from backend.services.fleet_service import FleetAppState
+from validator.scoring.engine import MissionResult, PoPWScoringEngine
 from backend.services.payment_service import PaymentAppState
 from payments.models import EventType, FleetEvent, PaymentRequest
 from robotics.models.robot_state import NavState, RobotState
@@ -45,6 +50,8 @@ class FleetPaymentBridge:
         self._task: asyncio.Task[None] | None = None
         self._armed: dict[str, EventType] = {}
         self._mission_id: str | None = None
+        self._mission_recorded: bool = False
+        self._scorer = PoPWScoringEngine()
 
     # ─── Lifecycle ───────────────────────────────────────────────────────
 
@@ -102,6 +109,7 @@ class FleetPaymentBridge:
             # New mission: previous arming no longer applies.
             self._mission_id = state.mission_id
             self._armed.clear()
+            self._mission_recorded = False
 
         for robot in state.robots:
             event_type = self._classify(robot)
@@ -117,6 +125,78 @@ class FleetPaymentBridge:
                 continue  # already paid for this episode
             self._armed[robot.id] = event_type
             await self._handle(robot, event_type)
+
+        # Capture completed live mission as a real-metrics benchmark row.
+        if (state.total_tasks and state.completed_tasks >= state.total_tasks
+                and state.mission_status == "complete"
+                and not self._mission_recorded):
+            self._mission_recorded = True
+            self._record_live_mission(state)
+
+    def _record_live_mission(self, state) -> None:
+        """Write a real-metrics benchmark row for a completed live mission."""
+        try:
+            mission = self._fleet.orchestrator.get_mission()
+            policy = self._fleet.orchestrator.policy_name
+            completed = state.completed_tasks
+            total = state.total_tasks
+            collisions = state.collision_count
+            elapsed = state.elapsed_seconds
+            time_limit = state.time_limit_s
+            energy = getattr(mission, "energy_consumed", 0.0) if mission else 0.0
+            failure_count = getattr(mission, "failure_count", 0) if mission else 0
+            robot_count = len(state.robots)
+
+            result = MissionResult(
+                tasks_completed=completed,
+                tasks_total=total,
+                elapsed_s=elapsed,
+                time_limit_s=time_limit,
+                collision_count=collisions,
+                energy_consumed=energy,
+                energy_budget=robot_count * 100.0,
+                failure_count=failure_count,
+            )
+            score = self._scorer.score(result).final
+
+            try:
+                git_commit = subprocess.check_output(
+                    ["git", "rev-parse", "HEAD"], stderr=subprocess.DEVNULL
+                ).decode().strip()
+            except Exception:
+                git_commit = "UNKNOWN"
+
+            payload = {
+                "experiment_id": f"live_{state.mission_id}",
+                "policy": policy,
+                "scenario_id": getattr(mission, "scenario_id", "") if mission else "",
+                "robot_count": robot_count,
+                "n_runs": 1,
+                "mean_popw_score": score,
+                "std_popw_score": 0.0,
+                "mean_success_rate": (completed / total) if total else 0.0,
+                "std_success_rate": 0.0,
+                "mean_collision_count": float(collisions),
+                "std_collision_count": 0.0,
+                "mean_completion_time_s": elapsed,
+                "std_completion_time_s": 0.0,
+                "status": "COMPLETE",
+                "harness": "live_mission",
+                "seed_range": [getattr(mission, "seed", 0) if mission else 0],
+                "ran_at": _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime()),
+                "git_commit": git_commit,
+            }
+
+            out_dir = Path("experiments/results/live_missions") / str(state.mission_id)
+            out_dir.mkdir(parents=True, exist_ok=True)
+            (out_dir / "result.json").write_text(
+                json.dumps(payload, indent=2), encoding="utf-8"
+            )
+            import structlog
+            structlog.get_logger(__name__).info("live_mission_recorded", mission_id=state.mission_id, score=score)
+        except Exception as exc:  # noqa: BLE001
+            import structlog
+            structlog.get_logger(__name__).warning("live_mission_record_failed", error=str(exc))
 
     # ─── Decision + payment ──────────────────────────────────────────────
 
