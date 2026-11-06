@@ -1,5 +1,6 @@
 // ScoreGauge — PoPW score gauge. Per AGENTS.md §1.6: animates ONLY when the
 // score changes; shows "No data yet" when no score exists (never zeros).
+// Colors use the theme tokens so the gauge reads correctly in both modes.
 import { useEffect, useState } from 'react'
 
 interface ScoreGaugeProps {
@@ -42,7 +43,7 @@ export function ScoreGauge({ score }: ScoreGaugeProps) {
         <path
           d={arcPath(60, 60, 50, -225, 45)}
           fill="none"
-          stroke="#1e293b"
+          stroke="rgb(var(--line-strong))"
           strokeWidth={9}
           strokeLinecap="round"
         />
@@ -60,13 +61,13 @@ export function ScoreGauge({ score }: ScoreGaugeProps) {
       <div className="absolute inset-0 flex flex-col items-center justify-center">
         {value === null ? (
           <>
-            <span className="text-sm font-semibold text-slate-300">—</span>
-            <span className="text-[10px] uppercase tracking-wide text-slate-500">No data yet</span>
+            <span className="text-sm font-semibold text-fg">—</span>
+            <span className="text-[10px] uppercase tracking-wide text-subtle">No data yet</span>
           </>
         ) : (
           <>
-            <span className="font-mono text-2xl font-bold text-slate-100">{value.toFixed(1)}</span>
-            <span className="text-[10px] uppercase tracking-wide text-slate-500">/ 100</span>
+            <span className="font-mono text-2xl font-bold text-fg">{value.toFixed(1)}</span>
+            <span className="text-[10px] uppercase tracking-wide text-subtle">/ 100</span>
           </>
         )}
       </div>
