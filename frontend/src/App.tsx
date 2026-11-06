@@ -18,6 +18,7 @@ import { PerRobotLeaderboard } from './components/benchmark/PerRobotLeaderboard'
 import { Header } from './components/layout/Header'
 import { FleetViewport } from './components/fleet/FleetViewport'
 import { MissionPanel } from './components/mission/MissionPanel'
+import { PolicyRunner } from './components/mission/PolicyRunner'
 import { ValidatorNetworkPanel } from './components/validator/ValidatorNetworkPanel'
 import { ErrorBoundary } from './components/shared/ErrorBoundary'
 import { PaymentPanel } from './components/payments/PaymentPanel'
@@ -55,6 +56,9 @@ export function App() {
       <div className="grid grid-cols-1 gap-3 px-3 pb-3 lg:grid-cols-3">
         <ErrorBoundary label="Mission panel">
           <MissionPanel />
+        <div className="mt-3">
+          <PolicyRunner />
+        </div>
         </ErrorBoundary>
         <ErrorBoundary label="Validator network">
           <ValidatorNetworkPanel />

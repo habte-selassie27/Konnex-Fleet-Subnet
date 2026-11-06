@@ -64,6 +64,13 @@ export const api = {
     })
   },
 
+  /** List genuinely registered, executable allocator policies. */
+  getPolicies(): Promise<Array<{ id: string; name: string; algorithm: string; available: boolean }>> {
+    return request<Array<{ id: string; name: string; algorithm: string; available: boolean }>>(
+      '/missions/policies'
+    )
+  },
+
   /** Start a backend mission (auto-capture produces a benchmark row). */
   createMission(payload: {
     robot_count: number

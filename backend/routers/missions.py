@@ -13,6 +13,7 @@ import structlog
 from fastapi import APIRouter, HTTPException, Request
 
 from backend.schemas import MissionCreateRequest, MissionResponse
+from fleet.task_allocator import allocator_by_name
 from backend.security import require_api_key
 from backend.services.fleet_service import FleetAppState, live_popw_score
 
@@ -50,6 +51,31 @@ def _to_response(fleet: FleetAppState, mission_id: str) -> MissionResponse:
         energy_consumed=mission.energy_consumed,
         popw_score=live_popw_score(mission),
     )
+
+
+@router.get("/policies", response_model=list[dict])
+async def list_policies() -> list[dict]:
+    """Return genuinely registered, executable allocator policies.
+
+    Only policies that allocator_by_name can actually construct are exposed,
+    so the frontend never invents a policy the backend cannot run.
+    """
+    registered = ["nearest", "hungarian", "cost_optimizer"]
+    out = []
+    for name in registered:
+        try:
+            alloc = allocator_by_name(name)
+        except ValueError:
+            continue
+        out.append(
+            {
+                "id": name,
+                "name": name,
+                "algorithm": type(alloc).__name__,
+                "available": True,
+            }
+        )
+    return out
 
 
 @router.post("/", status_code=201, response_model=MissionResponse)
