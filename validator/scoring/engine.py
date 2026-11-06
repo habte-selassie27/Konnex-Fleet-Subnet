@@ -15,6 +15,7 @@ from pathlib import Path
 import yaml
 
 from validator.scoring.components import coordination_score, robustness_score
+from validator.scoring.konnex import KonnexWeights, KonnexWorkScore, work_score
 
 _WEIGHTS_PATH = Path(__file__).resolve().parent.parent.parent / "protocol" / "powp" / "weights.yaml"
 
@@ -63,6 +64,7 @@ class PoPWScore:
     robustness: float
     final: float
     weights: ScoringWeights
+    konnex: KonnexWorkScore | None = None
 
 
 @dataclass(frozen=True)
@@ -116,6 +118,14 @@ class PoPWScoringEngine:
             + weights.coordination * coordination
             + weights.robustness * robustness
         )
+        safety_violations = 1 if result.collision_count > 0 else 0
+        konnex = work_score(
+            task_match=mission_success,
+            efficiency=efficiency,
+            evidence_quality=1.0,
+            safety_violations=safety_violations,
+            weights=KonnexWeights.from_yaml(),
+        )
         return PoPWScore(
             mission_success=mission_success,
             safety=safety,
@@ -125,6 +135,7 @@ class PoPWScoringEngine:
             robustness=robustness,
             final=round(final, 2),
             weights=weights,
+            konnex=konnex,
         )
 
     @staticmethod

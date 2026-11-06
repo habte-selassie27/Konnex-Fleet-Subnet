@@ -22,9 +22,12 @@ except ImportError:  # pragma: no cover - environment-dependent
     bt = None
     _BT_AVAILABLE = False
 
-if _BT_AVAILABLE:
+# bittensor v11 removed the Synapse/axon/dendrite networking stack.
+_BT_SYNAPSE = getattr(bt, "Synapse", None) if _BT_AVAILABLE else None
 
-    class FleetMissionSynapse(bt.Synapse):  # type: ignore[misc]
+if _BT_AVAILABLE and _BT_SYNAPSE is not None:
+
+    class FleetMissionSynapse(_BT_SYNAPSE):  # type: ignore[misc]
         """Subnet protocol for fleet-mission mining and validation.
 
         Validator -> miner:
@@ -73,5 +76,5 @@ else:  # pragma: no cover - environment-dependent
 
 
 def bittensor_available() -> bool:
-    """Whether bittensor is importable in this environment."""
-    return _BT_AVAILABLE
+    """Whether bittensor with the Synapse stack is usable in this environment."""
+    return _BT_AVAILABLE and _BT_SYNAPSE is not None

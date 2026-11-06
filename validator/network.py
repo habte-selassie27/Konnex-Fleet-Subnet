@@ -323,12 +323,12 @@ def _assess_execution(evidence: MissionEvidence, evidence_hash: str) -> Assessme
     )
 
 
-def _assess_safety(evidence: MissionEvidence, evidence_hash: str) -> Assessment:
+def _assess_safety(evidence: MissionEvidence, evidence_hash: str, max_collisions: int = 0) -> Assessment:
     """Were there collisions or other physical-safety violations?"""
     spec = VALIDATORS[1]
     collision_check = Check(
         "collision_free",
-        evidence.collision_count == 0,
+        evidence.collision_count <= max_collisions,
         f"{evidence.collision_count} collision event(s) recorded",
     )
     telemetry_check = Check(
@@ -348,7 +348,7 @@ def _assess_safety(evidence: MissionEvidence, evidence_hash: str) -> Assessment:
             "Evidence package has no robot/task telemetry to assess.",
             evidence_hash,
         )
-    if evidence.collision_count > 0:
+    if evidence.collision_count > max_collisions:
         score = max(0.0, 100.0 - 25.0 * evidence.collision_count)
         return Assessment(
             spec.id,
@@ -356,8 +356,8 @@ def _assess_safety(evidence: MissionEvidence, evidence_hash: str) -> Assessment:
             "FAIL",
             _round(score, 2),
             checks,
-            f"{evidence.collision_count} collision(s) violate the zero-collision "
-            "target — safety veto.",
+            f"{evidence.collision_count} collision(s) exceed the "
+            f"{max_collisions}-collision safety target — safety veto.",
             evidence_hash,
         )
     if not evidence.is_terminal:
@@ -455,10 +455,14 @@ _ASSESSORS = {
 }
 
 
-def assess(evidence: MissionEvidence) -> tuple[Assessment, ...]:
+def assess(evidence: MissionEvidence, max_collisions: int = 0) -> tuple[Assessment, ...]:
     """Run every registered validator independently over the same evidence."""
     evidence_hash = evidence.evidence_hash()
-    return tuple(_ASSESSORS[spec.role](evidence, evidence_hash) for spec in VALIDATORS)
+    return tuple(
+        _ASSESSORS[spec.role](evidence, evidence_hash, max_collisions) if spec.role == "safety"
+        else _ASSESSORS[spec.role](evidence, evidence_hash)
+        for spec in VALIDATORS
+    )
 
 
 def reach_consensus(assessments: Sequence[Assessment]) -> Consensus:
@@ -528,9 +532,9 @@ def reach_consensus(assessments: Sequence[Assessment]) -> Consensus:
     )
 
 
-def verify_mission(evidence: MissionEvidence) -> Verification:
+def verify_mission(evidence: MissionEvidence, max_collisions: int = 0) -> Verification:
     """Assess the evidence with all validators, then reach consensus."""
-    assessments = assess(evidence)
+    assessments = assess(evidence, max_collisions=max_collisions)
     return Verification(
         evidence=evidence,
         assessments=assessments,
