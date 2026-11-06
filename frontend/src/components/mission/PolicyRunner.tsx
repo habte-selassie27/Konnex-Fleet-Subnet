@@ -2,7 +2,6 @@ import { Dices, Loader2, Play } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 import { api } from '../../services/api'
-
 import { calculatePopw } from '../../data/popw'
 import { simMissionFromSnapshot } from '../../data/simMission'
 import {
@@ -13,12 +12,10 @@ import {
   type SimPolicy,
 } from '../../simulation/useSimulation'
 
-/**
- * Real, reproducible warehouse_v1 scenarios: 5 carts per mission, one crate
+/** Real, reproducible warehouse_v1 scenarios: 5 carts per mission, one crate
  * count per scenario from 5 up to 40. Run mission stages that many crates on
  * the warehouse floor and runs the visible mission in the viewport — the five
- * carts drive to the crates, lift them and stack them in the storage bin.
- */
+ * carts drive to the crates, lift them and stack them in the storage bin. */
 const ROBOT_COUNT = 5
 const CRATE_COUNTS = Array.from({ length: 36 }, (_, index) => index + 5)
 const DEFAULT_CRATE_COUNT = 20
@@ -51,11 +48,13 @@ export function PolicyRunner() {
 
   const running = runState === 'running'
 
-  // The panel reports the run it started, from the same engine snapshot the
-  // scene animates — never a separate backend number (AGENTS.md Law 1).
+  // One source of truth: the local sim snapshot. The Mission panel and this
+  // panel both read from it, so they always agree. The backend stores exactly
+  // what the sim produced — no second, divergent simulation.
   const mission = useMemo(() => {
     if (!started || snapshot === null) return null
-    const view = simMissionFromSnapshot(snapshot, runState)
+    const view = snapshot ? simMissionFromSnapshot(snapshot, runState) : null
+    if (!view) return null
     const popw =
       view.elapsed_seconds > 0
         ? (view.popw_score ??
@@ -82,14 +81,30 @@ export function PolicyRunner() {
     }
     setError(null)
     setStarted(true)
-    // Start a real backend mission so the run is captured as a benchmark row —
-    // sends the actual crate count, seed and policy (no hardcoded 20 tasks,
-    // no fixed seed = 42).
+    setMissionId(null)
+
+    // Run the sim locally — this is THE mission. Everything else reads from it.
+    start({ itemCount: taskCount, seed: resolvedSeed, policy })
+
+    // Poll until the sim finishes, then POST its exact results to the backend
+    // so the benchmark table stores exactly what the viewport showed.
+    for (let i = 0; i < 240; i++) {
+      if (runState === 'finished') break
+      if (running === false) return
+      await new Promise((r) => setTimeout(r, 500))
+    }
+
+    if (runState !== 'finished') {
+      setError('Simulation did not finish in time')
+      setStarted(false)
+      return
+    }
+
     try {
       const created = await api.createMission({
         robot_count: ROBOT_COUNT,
         task_count: taskCount,
-        seed: resolvedSeed,
+        seed: Number(seed),
         policy,
         time_limit_s: 600,
       })
@@ -97,9 +112,6 @@ export function PolicyRunner() {
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Mission creation failed')
     }
-    // Stages this exact floor (crate count + seed) and runs it in the viewport,
-    // dispatching crates with the selected allocator.
-    start({ itemCount: taskCount, seed: resolvedSeed, policy })
   }
 
   return (
@@ -109,7 +121,7 @@ export function PolicyRunner() {
         Run Mission
       </h2>
 
-      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <div className="flex flex-col gap-1">
           <label
             htmlFor="policy-runner-policy"
@@ -225,21 +237,23 @@ export function PolicyRunner() {
         </p>
       )}
 
-      {mission && (
+      {mission && mission.view && (
         <div className="mt-3 rounded-md border border-line/60 bg-surface p-3">
           <div className="flex items-center justify-between gap-2 mb-1">
             <span className="text-[10px] font-medium text-subtle">Mission</span>
-            <span className="font-mono text-xs text-fg">{missionId ?? mission.view.mission_id}</span>
+            <span className="font-mono text-xs text-fg">
+              {missionId ?? mission.view.mission_id}
+            </span>
           </div>
           <table className="w-full text-xs">
             <tbody>
               <tr className="border-b border-line/40 last:border-b-0">
-                <td className="py-1 pr-2 text-subtle">Status</td>
-                <td className="py-1 pr-2 font-mono text-fg capitalize">{mission.view.status}</td>
+                <td className="py-1 pr-2 text-subtle">Policy</td>
+                <td className="py-1 pr-2 font-mono text-fg">{mission.view.policy}</td>
               </tr>
               <tr className="border-b border-line/40 last:border-b-0">
-                <td className="py-1 pr-2 text-subtle">Seed</td>
-                <td className="py-1 pr-2 font-mono text-fg">{snapshot?.seed ?? '—'}</td>
+                <td className="py-1 pr-2 text-subtle">Status</td>
+                <td className="py-1 pr-2 font-mono text-fg capitalize">{mission.view.status}</td>
               </tr>
               <tr className="border-b border-line/40 last:border-b-0">
                 <td className="py-1 pr-2 text-subtle">Crates stacked</td>
@@ -253,9 +267,7 @@ export function PolicyRunner() {
               </tr>
               <tr className="border-b border-line/40 last:border-b-0">
                 <td className="py-1 pr-2 text-subtle">Elapsed</td>
-                <td className="py-1 pr-2 font-mono text-fg">
-                  {mission.view.elapsed_seconds.toFixed(1)} s
-                </td>
+                <td className="py-1 pr-2 font-mono text-fg">{mission.view.elapsed_seconds.toFixed(1)} s</td>
               </tr>
               <tr className="last:border-b-0">
                 <td className="py-1 pr-2 text-subtle">PoPW Score</td>
