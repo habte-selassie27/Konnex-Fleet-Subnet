@@ -2,6 +2,7 @@
 // components). Base URL resolved from VITE_API_URL or the dev proxy.
 import type {
   AgentDecision,
+  BenchmarkResult,
   EvaluationResult,
   HealthStatus,
   PaymentAuthorizeResult,
@@ -10,8 +11,12 @@ import type {
   PaymentSummary,
   PaymentTransaction,
   PaymentWallet,
+  PolicyRecord,
+  PolicySubmitPayload,
+  RewardSplit,
   RobotFailureResponse,
   RobotState,
+  ValidatorContextSnapshot,
 } from '../types'
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? '/api/v1'
@@ -117,5 +122,46 @@ export const api = {
   /** Aggregate agent-economy stats. */
   getPaymentSummary(): Promise<PaymentSummary> {
     return request<PaymentSummary>('/payments/summary')
+  },
+
+  // ─── Benchmarks / policies / validator context ───────────────────────
+
+  /**
+   * Measured benchmark rows from GET /experiments/benchmarks — only the runs
+   * `make benchmark` actually produced (frontend never fabricates rows).
+   */
+  listBenchmarks(): Promise<BenchmarkResult[]> {
+    return request<BenchmarkResult[]>('/experiments/benchmarks')
+  },
+
+  /**
+   * Submitted policies. The backend router is a STUB (Phase 2) — callers must
+   * surface the error honestly (PolicyRegistry shows "Policies unavailable").
+   */
+  listPolicies(): Promise<PolicyRecord[]> {
+    return request<PolicyRecord[]>('/policies/')
+  },
+
+  /** Submit a policy artifact; the backend re-computes the SHA-256 hash. */
+  submitPolicy(payload: PolicySubmitPayload): Promise<PolicyRecord> {
+    return request<PolicyRecord>('/policies/', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
+  },
+
+  /**
+   * Projected reward shares per policy. No backend route yet — the error is
+   * surfaced as "Reward split unavailable" rather than a fabricated split.
+   */
+  getRewardSplit(): Promise<RewardSplit> {
+    return request<RewardSplit>('/evaluations/reward-split')
+  },
+
+  /** Validator framing for one evaluation (STUB values until adapter wired). */
+  getValidatorContext(evaluationId: string): Promise<ValidatorContextSnapshot> {
+    return request<ValidatorContextSnapshot>(
+      `/validators/evaluations/${evaluationId}/context`,
+    )
   },
 }
