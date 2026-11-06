@@ -1,16 +1,22 @@
 // ValidatorNetworkPanel — Konnex-aligned multi-validator verification.
 //
-// One panel replaces the two duplicate "VALIDATOR" cards: three role-separated
-// validators (execution / safety / performance) independently assess the same
-// live mission evidence, then a consensus layer decides. Data comes from
-// GET /validators/network — real mission telemetry, never mock verdicts
-// (AGENTS.md Law 1). The Konnex protocol adapter is STUB and labelled so.
-import { useEffect, useState } from 'react'
+// Source-aware:
+//   • SIM mode: assessments are computed live from the engine snapshot
+//     (data/simValidator.ts) — dynamic per run, no backend fetch.
+//   • Live/recorded: fetches GET /validators/network — real mission telemetry,
+//     never mock verdicts (AGENTS.md Law 1).
+//
+// The Konnex protocol adapter is STUB and labelled so in both paths.
+import { useEffect, useMemo, useState } from 'react'
 import { ExternalLink, ShieldCheck } from 'lucide-react'
 
 import { api } from '../../services/api'
-import { useFleetStore } from '../../store/fleetStore'
-import type { ConsensusDecision, ValidatorNetwork, ValidatorRole } from '../../types'
+import { useMissionView } from '../../hooks/useMissionView'
+import type {
+  ConsensusDecision,
+  ValidatorNetwork,
+  ValidatorRole,
+} from '../../types'
 import { LoadingSpinner } from '../shared/LoadingSpinner'
 import { ValidatorRoleRow } from './ValidatorRoleRow'
 
@@ -34,13 +40,17 @@ function shortHash(hash: string): string {
 }
 
 export function ValidatorNetworkPanel() {
-  const missionId = useFleetStore((s) => s.mission?.mission_id)
-  const missionStatus = useFleetStore((s) => s.mission?.status)
+  const { mission, source, validatorNetwork: simNetwork } = useMissionView()
+  const missionId = mission?.mission_id
+  const missionStatus = mission?.status
   const [state, setState] = useState<LoadState>({ kind: 'loading' })
 
   // Refetch when the live mission changes or reaches a terminal status: the
   // verdict is only final once execution ends.
   useEffect(() => {
+    // SIM runs are computed locally — no backend fetch.
+    if (source === 'simulation') return
+
     let cancelled = false
     setState({ kind: 'loading' })
     api
@@ -59,9 +69,18 @@ export function ValidatorNetworkPanel() {
     return () => {
       cancelled = true
     }
-  }, [missionId, missionStatus])
+  }, [source, missionId, missionStatus])
 
-  const verification = state.kind === 'data' ? state.data.verification : null
+  // SIM: use the locally-computed network (re-renders each tick). Live/recorded:
+  // use the fetched backend data.
+  const network = useMemo<ValidatorNetwork | null>(() => {
+    if (source === 'simulation' && simNetwork !== null) return simNetwork
+    return state.kind === 'data' ? state.data : null
+  }, [source, simNetwork, state])
+
+  const verification = network?.verification ?? null
+  const konnex = network?.konnex ?? null
+
   const assessments = new Map(
     (verification?.assessments ?? []).map((assessment) => [assessment.role, assessment]),
   )
@@ -89,75 +108,89 @@ export function ValidatorNetworkPanel() {
         )}
       </div>
 
-      {state.kind === 'loading' && <LoadingSpinner label="Verifying mission evidence…" />}
+      {source === 'simulation' ? (
+        <>
+          <p className="mt-2 text-[10px] text-subtle">
+            Computed live from the simulation snapshot — no backend fetch.
+          </p>
+          {state.kind === 'loading' && <LoadingSpinner label="Verifying mission evidence…" />}
+          {state.kind === 'error' && (
+            <p className="mt-3 text-xs text-red-400" role="alert">
+              Validator network unavailable: {state.message}
+            </p>
+          )}
+        </>
+      ) : (
+        <>
+          {state.kind === 'loading' && <LoadingSpinner label="Verifying mission evidence…" />}
 
-      {state.kind === 'error' && (
-        <p className="mt-3 text-xs text-red-400" role="alert">
-          Validator network unavailable: {state.message}
-        </p>
+          {state.kind === 'error' && (
+            <p className="mt-3 text-xs text-red-400" role="alert">
+              Validator network unavailable: {state.message}
+            </p>
+          )}
+        </>
       )}
 
-      {state.kind === 'data' && (
+      {verification ? (
         <>
-          {verification ? (
-            <>
-              <p className="mt-2 font-mono text-[10px] text-subtle">
-                #{verification.mission_id.slice(0, 8)} · {verification.policy} ·{' '}
-                {verification.tasks_completed}/{verification.task_count} tasks ·{' '}
-                {verification.collision_count} collisions · evidence{' '}
-                <span title={verification.evidence_hash}>
-                  {shortHash(verification.evidence_hash)}
-                </span>
-              </p>
-
-              <div className="mt-2.5 grid grid-cols-1 gap-2 md:grid-cols-3">
-                {ROLES.map((role) => (
-                  <ValidatorRoleRow
-                    key={role}
-                    role={role}
-                    assessment={assessments.get(role)}
-                  />
-                ))}
-              </div>
-
-              <div className="mt-3 border-t border-line/60 pt-2.5">
-                <p className="text-[11px] leading-snug text-muted">
-                  <span className="font-semibold text-fg">Consensus:</span>{' '}
-                  {verification.consensus.reason}
-                  <span className="font-mono text-subtle">
-                    {' '}
-                    ({verification.consensus.accept_votes} accept /{' '}
-                    {verification.consensus.reject_votes} reject of{' '}
-                    {verification.consensus.validator_count})
-                  </span>
-                </p>
-              </div>
-            </>
-          ) : (
-            <div className="mt-2.5 grid grid-cols-1 gap-2 md:grid-cols-3">
-              {ROLES.map((role) => (
-                <ValidatorRoleRow key={role} role={role} />
-              ))}
-            </div>
-          )}
-
-          <div className="mt-auto flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-line/60 pt-2.5 text-[10px] text-subtle">
-            <span className="font-semibold uppercase tracking-wide">
-              Konnex bridge: {state.data.konnex.adapter_status}
+          <p className="mt-2 font-mono text-[10px] text-subtle">
+            #{verification.mission_id.slice(0, 8)} · {verification.policy} ·{' '}
+            {verification.tasks_completed}/{verification.task_count} tasks ·{' '}
+            {verification.collision_count} collisions · evidence{' '}
+            <span title={verification.evidence_hash}>
+              {shortHash(verification.evidence_hash)}
             </span>
-            <span aria-hidden="true">·</span>
-            <span>{state.data.konnex.note}</span>
-            <a
-              href={state.data.konnex.docs_url}
-              target="_blank"
-              rel="noreferrer"
-              aria-label="Open Konnex validator documentation"
-              className="ml-auto flex items-center gap-0.5 underline decoration-slate-600 underline-offset-2 hover:text-muted"
-            >
-              docs <ExternalLink className="h-2.5 w-2.5" aria-hidden="true" />
-            </a>
+          </p>
+
+          <div className="mt-2.5 grid grid-cols-1 gap-2 md:grid-cols-3">
+            {ROLES.map((role) => (
+              <ValidatorRoleRow
+                key={role}
+                role={role}
+                assessment={assessments.get(role)}
+              />
+            ))}
+          </div>
+
+          <div className="mt-3 border-t border-line/60 pt-2.5">
+            <p className="text-[11px] leading-snug text-muted">
+              <span className="font-semibold text-fg">Consensus:</span>{' '}
+              {verification.consensus.reason}
+              <span className="font-mono text-subtle">
+                {' '}
+                ({verification.consensus.accept_votes} accept /{' '}
+                {verification.consensus.reject_votes} reject of{' '}
+                {verification.consensus.validator_count})
+              </span>
+            </p>
           </div>
         </>
+      ) : (
+        <div className="mt-2.5 grid grid-cols-1 gap-2 md:grid-cols-3">
+          {ROLES.map((role) => (
+            <ValidatorRoleRow key={role} role={role} />
+          ))}
+        </div>
+      )}
+
+      {konnex && (
+        <div className="mt-auto flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-line/60 pt-2.5 text-[10px] text-subtle">
+          <span className="font-semibold uppercase tracking-wide">
+            Konnex bridge: {konnex.adapter_status}
+          </span>
+          <span aria-hidden="true">·</span>
+          <span>{konnex.note}</span>
+          <a
+            href={konnex.docs_url}
+            target="_blank"
+            rel="noreferrer"
+            aria-label="Open Konnex validator documentation"
+            className="ml-auto flex items-center gap-0.5 underline decoration-slate-600 underline-offset-2 hover:text-muted"
+          >
+            docs <ExternalLink className="h-2.5 w-2.5" aria-hidden="true" />
+          </a>
+        </div>
       )}
     </section>
   )

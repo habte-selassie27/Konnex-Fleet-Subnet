@@ -11,19 +11,22 @@ import { useMemo } from 'react'
 import { useFleetView } from './useFleetView'
 import { useSimulationProvider, useSimulationSnapshot, useSimulationEnergyHistory } from '../simulation/useSimulation'
 import { simMissionFromSnapshot } from '../data/simMission'
+import { simValidatorNetwork } from '../data/simValidator'
 import type { EnergySample } from '../types'
 import type { FleetSource, MissionView } from '../data/missionView'
+import type { ValidatorNetwork } from '../types'
 
 export interface MissionViewResult {
   mission: MissionView | null
   source: FleetSource
   /** Only present when source === 'simulation'; same series as the viewport run. */
   energyHistory: EnergySample[] | null
+  /** Only present when source === 'simulation'; computed live from the snapshot. */
+  validatorNetwork: ValidatorNetwork | null
 }
 
 export function useMissionView(): MissionViewResult {
   const mode = useSimulationProvider((s) => s.mode)
-  const runState = useSimulationProvider((s) => s.runState)
   const { snapshot } = useSimulationSnapshot()
   const energyHistory = useSimulationEnergyHistory()
   const view = useFleetView()
@@ -31,13 +34,12 @@ export function useMissionView(): MissionViewResult {
   return useMemo(() => {
     if (mode === 'sim' && snapshot !== null) {
       return {
-        // Pass the real playback state so a staged-but-not-started run reads as
-        // pending instead of claiming to be running.
-        mission: simMissionFromSnapshot(snapshot, runState),
+        mission: simMissionFromSnapshot(snapshot),
         source: 'simulation',
         energyHistory,
+        validatorNetwork: simValidatorNetwork(snapshot),
       }
     }
-    return { mission: view.mission, source: view.source, energyHistory: null }
-  }, [mode, runState, snapshot, energyHistory, view])
+    return { mission: view.mission, source: view.source, energyHistory: null, validatorNetwork: null }
+  }, [mode, snapshot, energyHistory, view])
 }
