@@ -54,6 +54,7 @@ const MEASURED = /COMPLETE|UNSTABLE/
 
 export function BenchmarkTable() {
   const [state, setState] = useState<LoadState>({ kind: 'loading' })
+  const [liveOnly, setLiveOnly] = useState(false)
 
   const prevScoresRef = useRef<Map<string, number>>(new Map())
 
@@ -97,6 +98,14 @@ export function BenchmarkTable() {
         <BarChart3 className="h-3.5 w-3.5" aria-hidden="true" />
         Benchmarks
       </h2>
+      <button
+        type="button"
+        onClick={() => setLiveOnly((v) => !v)}
+        className="ml-auto rounded-md border border-line/60 px-2 py-0.5 text-[10px] font-medium text-muted hover:text-fg"
+        aria-pressed={liveOnly}
+      >
+        {liveOnly ? 'Live only' : 'All runs'}
+      </button>
 
       {state.kind === 'loading' && (
         <LoadingSpinner label="Loading benchmark results…" />
@@ -115,7 +124,11 @@ export function BenchmarkTable() {
         </p>
       )}
 
-      {state.kind === 'data' && (
+      {state.kind === 'data' && (() => {
+        const displayed = liveOnly
+          ? state.rows.filter((r) => r.harness === 'live_mission')
+          : state.rows
+        return (
         <>
           <table className="mt-3 w-full text-left text-xs">
             <thead>
@@ -128,7 +141,7 @@ export function BenchmarkTable() {
               </tr>
             </thead>
             <tbody>
-              {state.rows.map((row) => (
+              {displayed.map((row) => (
                 <tr key={`${row.policy}-${row.source}`} className="border-b border-line/40 last:border-b-0">
                   <td className="py-2 pr-2">
                     <span className="font-mono text-fg">{row.policy}</span>
@@ -175,13 +188,14 @@ export function BenchmarkTable() {
               ))}
             </tbody>
           </table>
-          {state.rows.some((row) => MEASURED.test(row.status)) && (
+          {displayed.some((row) => MEASURED.test(row.status)) && (
             <p className="mt-2 text-[10px] uppercase tracking-wide text-subtle">
-              {state.rows.length} measured
+              {displayed.length} measured
             </p>
           )}
         </>
-      )}
+        )
+      })()}
     </section>
   )
 }
