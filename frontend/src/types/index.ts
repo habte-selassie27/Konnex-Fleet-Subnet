@@ -103,6 +103,8 @@ export interface EvaluationResult {
   final_score: number | null
   artifact_hash: string
   artifact_url: string
+  /** ScoreRoot/commitments framing when the validator posted one. */
+  popw_commitments?: ValidatorScoreCommitments | null
 }
 
 export interface HealthStatus {
@@ -140,6 +142,10 @@ export interface AgentDecision {
   no_action: boolean
   selected_provider_id: string
   quotes: ProviderQuote[]
+  /** Backend-generated id when the decision was persisted — demo quotes may omit it. */
+  id?: string | null
+  /** Unix seconds when the decision was recorded — demo quotes may omit it. */
+  timestamp?: number | null
 }
 
 export interface PaymentTransaction {
@@ -206,4 +212,162 @@ export interface PaymentEventInput {
   event_type: string
   battery_pct: number
   note?: string
+}
+
+// ─── Robot payment roster (per-robot ledger for RobotPaymentHistory) ─────────
+
+export interface RobotPaymentAccount {
+  robot_id: string
+  total_usdc: number
+  payment_count: number
+  settled_count: number
+  pending_count: number
+  failed_count: number
+  decision_count: number
+  transactions: PaymentTransaction[]
+  decisions: AgentDecision[]
+}
+
+// ─── Benchmarks (backend/schemas.py BenchmarkResult → GET /experiments/) ─────
+
+export interface BenchmarkResult {
+  experiment_id: string
+  policy: string
+  scenario_id: string
+  /** Harness label, e.g. "FleetEnv" — empty when no unified-harness run exists. */
+  harness: string
+  robot_count: number
+  n_runs: number
+  seed_range: [number, number]
+  /** null for unmeasured rows (SKIPPED) — never invented by the dashboard. */
+  mean_popw_score: number | null
+  std_popw_score: number | null
+  mean_success_rate: number | null
+  std_success_rate: number | null
+  mean_collision_count: number | null
+  std_collision_count: number | null
+  mean_completion_time_s: number | null
+  std_completion_time_s: number | null
+  /** COMPLETE | SKIPPED | … */
+  status: string
+  skip_reason: string
+  ran_at: string
+  git_commit: string
+  source: string
+}
+
+// ─── Policies (POST/GET /policies — backend router is a STUB) ────────────────
+
+export interface PolicyRecord {
+  id: string
+  name: string
+  version: string
+  author: string
+  algorithm: string
+  /** SHA-256 of the artifact bytes, recomputed server-side. */
+  policy_hash: string
+  /** SUBMITTED | VERIFIED | REJECTED */
+  status: string
+  size_bytes: number
+  /** true when the same artifact hash was submitted before. */
+  duplicate: boolean
+  artifact_url: string
+  created_at: string
+}
+
+export interface PolicySubmitPayload {
+  name: string
+  version: string
+  author: string
+  algorithm: string
+  policy_hash: string
+  artifact_base64: string
+}
+
+// ─── Konnex scoring (validator framing) ──────────────────────────────────────
+
+/** Configured estimate: Konnex does not publish its per-subnet weight vector. */
+export interface KonnexWeights {
+  task_match: number
+  efficiency: number
+  evidence_quality: number
+}
+
+/**
+ * Konnex-aligned work score for one evaluation:
+ * gate(safety) × (w1·task_match + w2·efficiency + w3·evidence).
+ * A safety violation zeroes the whole score (safety_gate = 0).
+ */
+export interface KonnexScore {
+  safety_gate: number
+  safety_violations: number
+  task_match: number
+  efficiency: number
+  evidence_quality: number
+  final: number
+  weights: KonnexWeights
+}
+
+// ─── Reward split (GET /evaluations/reward-split) ────────────────────────────
+
+export interface RewardSplitEntry {
+  policy_id: string
+  evaluation_id: string
+  score: number
+  competitive_share: number
+  winner_takes_most_share: number
+  is_top: boolean
+}
+
+export interface RewardSplit {
+  /** Largest winner-takes-most share (fractions of a unit pool). */
+  top_share: number
+  note?: string
+  entries: RewardSplitEntry[]
+}
+
+// ─── Validator context (GET /validators/evaluations/{id}/context — STUB) ─────
+
+/** ScoreRoot/commitments framing posted with an evaluation (or from context). */
+export interface ValidatorScoreCommitments {
+  scoreroot_hash: string
+  commitments_url: string
+  posted_at_ms: number | null
+}
+
+export type ValidatorEvaluatorStatus = 'ready' | 'scoring' | 'timed_out' | 'slashed'
+export type ValidatorServingMode = 'idle' | 'serving'
+
+export interface ValidatorStakeSnapshot {
+  knx_staked: number
+  knx_at_risk_after_slash: number
+  stablecoin_settlement_assurance: number
+  status: ValidatorEvaluatorStatus
+}
+
+export interface ValidatorServingSnapshot {
+  mode: ValidatorServingMode
+  active_request_id: string | null
+  requests_since_reset: number
+  last_checkpoint_ms: number | null
+}
+
+/**
+ * Raw backend context shape. STUB values are honest placeholders (empty
+ * ScoreRoot, 0.0 KNX) — the Konnex adapter populates them when verified.
+ */
+export interface ValidatorContextSnapshot {
+  scoreroot_hash: string
+  scoreroot_url: string
+  commitments_url: string
+  knx_staked: number
+  knx_at_risk_after_slash: number
+  stablecoin_settlement_assurance: number
+  evaluator_status: string
+  serving_mode: string
+  active_request_id: string | null
+  requests_since_reset: number
+  last_checkpoint_ms: number | null
+  _note?: string
+  _source: string
 }
