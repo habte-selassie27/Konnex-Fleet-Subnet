@@ -21,4 +21,5 @@ class FleetState:
     total_tasks: int = 0
     collision_count: int = 0
     elapsed_seconds: float = 0.0
+    time_limit_s: float = 600.0
     timestamp: float = 0.0

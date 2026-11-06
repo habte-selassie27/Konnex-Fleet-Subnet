@@ -192,6 +192,7 @@ class FleetOrchestrator:
             total_tasks=mission.task_count if mission else 0,
             collision_count=mission.collision_count if mission else 0,
             elapsed_seconds=mission.elapsed_seconds if mission else 0.0,
+            time_limit_s=mission.time_limit_s if mission else 600.0,
             timestamp=self._clock,
         )
 
