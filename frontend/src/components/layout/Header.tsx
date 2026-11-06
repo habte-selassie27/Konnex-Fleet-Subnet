@@ -1,40 +1,60 @@
-// Header — top bar with live/offline badge, real policy name (from the
-// MISSION_UPDATE WS contract) and mission context.
-import { useFleetStore } from '../../store/fleetStore'
+// Header — top bar with the mission-scoped provenance badge, the policy/task
+// context of the exact mission the panels below show, and the theme toggle.
+//
+// The badge is driven by useMissionView — the same hook that feeds
+// MissionPanel and the metrics rail — so it can never describe a different
+// run than the one on screen (AGENTS.md Law 1 / §0.3). In SIM mode the scene,
+// the fleet rail and the header all describe the same engine run.
+import { Moon, Sun } from 'lucide-react'
+
+import { useMissionView } from '../../hooks/useMissionView'
+import { useUiStore } from '../../store/uiStore'
+import { SourcePill } from '../shared/SourcePill'
 
 export function Header() {
-  const isOnline = useFleetStore((s) => s.isOnline)
-  const mission = useFleetStore((s) => s.mission)
+  const { mission, source } = useMissionView()
+  const theme = useUiStore((s) => s.theme)
+  const toggleTheme = useUiStore((s) => s.toggleTheme)
 
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between border-b border-slate-800 bg-slate-950 px-4">
+    <header className="flex h-14 shrink-0 items-center justify-between border-b border-line bg-surface px-4 transition-colors duration-200">
       <div className="flex items-center gap-3">
-        <h1 className="text-sm font-semibold text-slate-100">Konnex Fleet Intelligence</h1>
-        {isOnline ? (
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-xs font-medium text-emerald-400">
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" aria-hidden="true" />
-            LIVE
-          </span>
-        ) : (
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-red-500/15 px-2.5 py-0.5 text-xs font-medium text-red-400">
-            <span className="h-1.5 w-1.5 rounded-full bg-red-400" aria-hidden="true" />
-            OFFLINE
-          </span>
-        )}
+        <h1 className="text-sm font-semibold text-fg">Konnex Fleet Intelligence</h1>
+
+        {/* Mission-scoped provenance: describes the mission panels below, while
+            the viewport badge describes the scene renderer. */}
+        <div role="group" aria-label="Mission data source" className="flex items-center gap-2">
+          <span className="text-xs text-muted">Mission</span>
+          <SourcePill source={source} capturedAt={mission?.captured_at ?? null} />
+        </div>
       </div>
 
-      <div className="flex items-center gap-4 text-xs text-slate-400">
+      <div className="flex items-center gap-4 text-xs text-muted">
         {mission && (
           <>
             <span>
               Policy{' '}
-              <span className="font-mono text-slate-200">{mission.policy || '—'}</span>
+              <span className="font-mono text-fg">{mission.policy ?? '—'}</span>
             </span>
             <span className="font-mono">
               {mission.completed_tasks}/{mission.total_tasks} tasks
             </span>
           </>
         )}
+
+        <button
+          type="button"
+          onClick={toggleTheme}
+          aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+          title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+          className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-line bg-panel text-muted transition-colors hover:border-line-strong hover:text-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500"
+        >
+          {theme === 'dark' ? (
+            <Sun className="h-4 w-4" aria-hidden="true" />
+          ) : (
+            <Moon className="h-4 w-4" aria-hidden="true" />
+          )}
+        </button>
       </div>
     </header>
   )
