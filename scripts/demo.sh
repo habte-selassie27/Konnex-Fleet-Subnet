@@ -50,29 +50,9 @@ curl -s -m 2 http://127.0.0.1:8000/api/v1/health >/dev/null \
   || { echo "Backend failed to start — see /tmp/fleet_demo_backend.log"; exit 1; }
 echo "Backend healthy: http://127.0.0.1:8000"
 
-# ─── 3. Predefined demo mission ───────────────────────────────────────────
-curl -s -m 5 -L -X POST http://127.0.0.1:8000/api/v1/missions \
-  -H "X-Fleet-API-Key: dev-only-key" \
-  -H "Content-Type: application/json" \
-  -d '{"robot_count":5,"task_count":20,"seed":42,"policy":"nearest","time_limit_s":600}' \
-  >/dev/null && echo "Mission started: 5 robots / 20 tasks / seed 42 / policy=nearest"
-
-# ─── 4. Live FleetPay event (real telemetry -> agent payment) ─────────────
-# 20s into the mission we inject a navigation failure into robot_2. The live
-# payment bridge sees the FAILED state in real telemetry, the agent quotes a
-# maintenance provider, the policy gate approves it, and a transaction is
-# persisted — the dashboard's FleetPay panel then shows a payment that came
-# from the actual mission, not from the canned demo scenario.
-( sleep 20
-  curl -s -m 5 -X POST http://127.0.0.1:8000/api/v1/robots/robot_2/fail \
-    -H "X-Fleet-API-Key: dev-only-key" \
-    -H "Content-Type: application/json" \
-    -d '{"failure_type":"navigation_failure"}' \
-    >/dev/null 2>&1
-) >/dev/null 2>&1 &
-echo "FleetPay live event scheduled: navigation_failure on robot_2 at t+20s"
-
-# ─── 5. Frontend dashboard ────────────────────────────────────────────────
+# ─── 3. Frontend dashboard ────────────────────────────────────────────────
+# No demo mission is auto-started. Start one from the dashboard's Policy Runner
+# or via POST /api/v1/missions/ with your chosen seed/policy.
 DASH_PORT=3014
 DASH_URL="http://127.0.0.1:${DASH_PORT}"
 
