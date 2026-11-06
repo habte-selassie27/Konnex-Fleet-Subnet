@@ -2,11 +2,42 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Design tokens (AGENTS.md §1.3): palette set in tailwind.config.ts. */
+/* Design tokens (AGENTS.md §1.3): single source of truth for the dark + light
+   palettes. Colors are space-separated RGB triplets so Tailwind utilities can
+   apply per-element alpha (`bg-panel/85`), and the WebGL scene reads the same
+   values through scenePalette.ts. Dark is the default product theme; uiStore
+   owns the preference and App.tsx toggles `.dark` on <html>. */
+:root {
+  color-scheme: light;
+  --surface: 241 245 249;
+  --panel: 255 255 255;
+  --elevated: 248 250 252;
+  --line: 226 232 240;
+  --line-strong: 203 213 225;
+  --fg: 15 23 42;
+  --muted: 71 85 105;
+  --subtle: 100 116 139;
+}
+
+.dark {
+  color-scheme: dark;
+  --surface: 2 6 23;
+  --panel: 15 23 42;
+  --elevated: 30 41 59;
+  --line: 30 41 59;
+  --line-strong: 51 65 85;
+  --fg: 241 245 249;
+  --muted: 148 163 184;
+  --subtle: 100 116 139;
+}
 
 @layer base {
   html {
-    @apply bg-slate-950;
+    @apply bg-surface;
+  }
+
+  body {
+    @apply bg-surface text-fg;
   }
 
   body {
@@ -26,7 +57,7 @@
     height: 6px;
   }
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    @apply rounded-full bg-slate-700;
+    @apply rounded-full bg-line-strong;
   }
   .scrollbar-thin::-webkit-scrollbar-track {
     @apply bg-transparent;
